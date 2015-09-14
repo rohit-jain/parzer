@@ -1,0 +1,16 @@
+ROOT -> S
+S -> NP VP
+NP -> NP conj NP
+NP -> N' PP
+NP -> N'
+NP -> det N'
+N' -> N' VP
+N' -> N' conj N'
+N' -> noun
+N' -> adj N'
+N' -> noun N'
+VP -> verb
+VP -> verb NP
+VP -> VP PP
+VP -> to VP
+PP -> prep NP
