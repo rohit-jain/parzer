@@ -253,23 +253,91 @@ public class POSTaggerTester {
    * trellis.
    */
   static interface TrellisDecoder <S> {
-    List<S> getBestPath(Trellis<S> trellis);
+    List<S> getBestPath(Trellis<S> trellis, int sentenceLength);
   }
+  
+  
+  
+  static class ViterbiDecoder <S> implements TrellisDecoder<S> {
+	    public List<S> getBestPath(Trellis<S> trellis, int sentenceLength) {
+	      List<S> states = new ArrayList<S>();
+	      Set<S> previousStates = new HashSet<S>();
+	      Set<S> nextStates = new HashSet<S>();
+	      
+	      CounterMap< Integer , S> pie = new CounterMap< Integer , S>();
+	      
+	      S currentState = trellis.getStartState();
+	      
+	      System.out.println(currentState.toString());
+	      previousStates.add(currentState);
+	      nextStates = trellis.getForwardTransitions(currentState).keySet();
+	      
+	      // set position to 0
+	      int position = 0;
+	      
+	      // set the start state probability to 1 for position 0
+	      pie.setCount(position, currentState, 1.0);
+	      
+	      while( position < sentenceLength+2){
+	    	 
+	      	position += 1;
+	        System.out.println(position);
+	      	Set<S> tempStates = new HashSet<S>();
+	        
+	        for(S s: nextStates){
+	        	Counter<S> viterbiTransitions = new Counter<S>();
+	        	Counter<S> transitions = trellis.getForwardTransitions(s);
+	        	tempStates.addAll(transitions.keySet());
+        		System.out.println("outer loop");
+	        	System.out.println(s.toString());
+        		System.out.println("inner loop next");
+	  	      
+	        	for(S s_i: previousStates){
+	        		System.out.println(s_i.toString());
+		        	double p = pie.getCount(position-1 , s_i) * Math.exp( trellis.getForwardTransitions(s_i).getCount(s) );
+		        	viterbiTransitions.setCount(s_i, p);
+	        	}
+	        	S maxState = viterbiTransitions.argMax();
+	        	pie.setCount(position, s, viterbiTransitions.getCount(maxState));
+	        	System.out.println(viterbiTransitions.getCount(maxState));
+	        }
+	        
+	        previousStates = nextStates;
+	        nextStates = tempStates;
+	      }
+	      
+	      System.out.println("Done calculating pie");
+	      
+	      position = 0;
+	      while(position < sentenceLength+3 ){
+	    	  
+	    	  S bestState = pie.getCounter(position).argMax();
+	    	  System.out.println(bestState.toString());
+	    	  states.add(bestState);
+	    	  System.out.println(position);
+	    	  position += 1;
+	    	  
+	      }
+	      
+	      System.out.println("Returning States");
+	      return states;
+	    }
+	  }
 
   static class GreedyDecoder <S> implements TrellisDecoder<S> {
-    public List<S> getBestPath(Trellis<S> trellis) {
-      List<S> states = new ArrayList<S>();
-      S currentState = trellis.getStartState();
-      states.add(currentState);
-      while (!currentState.equals(trellis.getEndState())) {
-        Counter<S> transitions = trellis.getForwardTransitions(currentState);
-        S nextState = transitions.argMax();
-        states.add(nextState);
-        currentState = nextState;
-      }
-      return states;
-    }
-  }
+	    public List<S> getBestPath(Trellis<S> trellis, int sentenceLength) {
+	      List<S> states = new ArrayList<S>();
+	      S currentState = trellis.getStartState();
+	      states.add(currentState);
+	      while (!currentState.equals(trellis.getEndState())) {
+	        Counter<S> transitions = trellis.getForwardTransitions(currentState);
+	        S nextState = transitions.argMax();
+	        states.add(nextState);
+	        currentState = nextState;
+	      }
+	      return states;
+	    }
+	  }
 
   static class POSTagger {
 
@@ -339,8 +407,11 @@ public class POSTaggerTester {
     // to tag a sentence: build its trellis and find a path through that trellis
     public List<String> tag(List<String> sentence) {
       Trellis<State> trellis = buildTrellis(sentence);
-      List<State> states = trellisDecoder.getBestPath(trellis);
+      System.out.println(sentence);
+      System.out.println(sentence.size());
+      List<State> states = trellisDecoder.getBestPath(trellis, sentence.size());
       List<String> tags = State.toTagList(states);
+      System.out.println(tags);
       tags = stripBoundaryTags(tags);
       return tags;
     }
@@ -507,71 +578,6 @@ public class POSTaggerTester {
     	p = (lambda1 * p_t3) + (lambda2 * p_t3t2) + (lambda3 * p_t1t2t3);
     	return p;
     }
-    
-//    public Counter<String> getLogScoreCounter(LocalTrigramContext localTrigramContext) {
-//      int position = localTrigramContext.getPosition();
-//      String word = localTrigramContext.getWords().get(position);
-//      String precedingTags = makeBigramString(localTrigramContext.getPreviousPreviousTag(), localTrigramContext.getPreviousTag());
-//      String previousTag = localTrigramContext.getPreviousTag();
-//      String previousPreviousTag = localTrigramContext.getPreviousPreviousTag();
-//
-//      Counter<String> precedingTagCounter;
-//      Counter<String> logScoreCounter = new Counter<String>();
-//      Set<String> candidateTags;
-//      
-//      if (tagsToTags.keySet().contains(precedingTags)) {
-//      	//precedingTagCounter = tagsToTags.getCounter(precedingTags);
-//    	candidateTags = tagsToTags.getCounter(precedingTags).keySet();
-//      }
-//      else{
-//    	  candidateTags = tagsToWords.keySet();
-//      }
-//      
-//      if (word == STOP_WORD){
-////    	  double transition_probability = precedingTagCounter.getCount(STOP_TAG);
-//    	  double transition_probability = smoothTransitionProbability(tagsToTags, STOP_TAG, previousTag, precedingTags, makeBigramString(previousTag, STOP_TAG));
-//    	  if (transition_probability == 0){
-//    		  transition_probability  = Double.MIN_VALUE;
-//    	  }
-//    	  logScoreCounter.setCount(STOP_TAG, (Math.log(transition_probability)/ Math.log(2)));
-//    	  return logScoreCounter;
-//      }
-//      //Set<String> allowedFollowingTags = allowedFollowingTags(precedingTagCounter.keySet(), localTrigramContext.getPreviousPreviousTag(), localTrigramContext.getPreviousTag());
-//
-//      for (String candidateTag : candidateTags) {
-////    	  double transition_probability = precedingTagCounter.getCount(candidateTag);
-//    	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTag, previousTag, precedingTags, makeBigramString(previousTag, candidateTag));
-//    	  if (transition_probability == 0){
-//    		  transition_probability = Double.MIN_VALUE;
-//    	  }
-//    	  
-//    	  Counter<String> wordCounter, suffixCounter;
-//    	  double emission_probability = 0;
-//    		  
-//    	  if (knownWords.keySet().contains(word)){
-//    		  wordCounter = tagsToWords.getCounter(candidateTag);
-//    		  emission_probability = wordCounter.getCount(word);
-//    	  }
-//    	  else{
-//    		  double max = 0;
-//    		  for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
-//    			  String s = getSuffix(word, i);
-//    		      emission_probability = tagsToSuffix.getCount(candidateTag, s);
-//    		      if (emission_probability > max)
-//    		    	  emission_probability = max;
-//    		  }
-//    	  }
-//    	  
-//    	  if (emission_probability == 0){
-//    		  emission_probability = Double.MIN_VALUE;
-//    	  }
-//          double logScore = Math.log(transition_probability) + Math.log(emission_probability);
-////          if (!restrictTrigrams || allowedFollowingTags.isEmpty() || allowedFollowingTags.contains(candidateTag))
-//        	  logScoreCounter.incrementCount(candidateTag, (logScore/ Math.log(2)));
-//      }
-//
-//      return logScoreCounter;
-//    }
     
     public Counter<String> getLogScoreCounter(LocalTrigramContext localTrigramContext) {
         int position = localTrigramContext.getPosition();
@@ -961,7 +967,7 @@ public class POSTaggerTester {
     // TODO : improve on the MostFrequentTagScorer
     LocalTrigramScorer localTrigramScorer = new HMMTagScorer(false);
     // TODO : improve on the GreedyDecoder
-    TrellisDecoder<State> trellisDecoder = new GreedyDecoder<State>();
+    TrellisDecoder<State> trellisDecoder = new ViterbiDecoder<State>();
 
     // Train tagger
     POSTagger posTagger = new POSTagger(localTrigramScorer, trellisDecoder);
