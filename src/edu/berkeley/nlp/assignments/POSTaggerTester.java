@@ -17,7 +17,7 @@ public class POSTaggerTester {
   static final String START_TAG = "<S>";
   static final String STOP_TAG = "</S>";
   static final String UNKNOWN = "<UNK>";
-  static final int SUFFIX_LEN = 10;
+  static final int SUFFIX_LEN = 5;
 
   /**
    * Tagged sentences are a bundling of a list of words and a list of their
@@ -263,63 +263,80 @@ public class POSTaggerTester {
 	      List<S> states = new ArrayList<S>();
 	      Set<S> previousStates = new HashSet<S>();
 	      Set<S> nextStates = new HashSet<S>();
+	      Set<S> allStates = new HashSet<S>();
 	      
 	      CounterMap< Integer , S> pie = new CounterMap< Integer , S>();
 	      
 	      S currentState = trellis.getStartState();
 	      
-	      System.out.println(currentState.toString());
-	      previousStates.add(currentState);
-	      nextStates = trellis.getForwardTransitions(currentState).keySet();
-	      
 	      // set position to 0
 	      int position = 0;
 	      
-	      // set the start state probability to 1 for position 0
-	      pie.setCount(position, currentState, 1.0);
+	      allStates.add(currentState);
+	      position += 1; 
+	      while( position < sentenceLength+3 ){
+	    	  Set<S> allTempStates = new HashSet<S>();
+	    	  for (S s: allStates){
+	    		  allTempStates.addAll(trellis.getForwardTransitions(s).keySet());
+	    	  }
+	    	  allStates.addAll(allTempStates);
+	    	  position += 1;
+	      }
 	      
-	      while( position < sentenceLength+2){
-	    	 
-	      	position += 1;
-	        System.out.println(position);
+//	      System.out.println(allStates);
+	      position = 0;
+	      // set the start state probability to 1 for position 0
+	      pie.setCount(position, currentState, 0.0);
+	      
+	      position += 1;
+	      
+	      while( position < sentenceLength+3 ){
+//	        System.out.println(position);
 	      	Set<S> tempStates = new HashSet<S>();
 	        
-	        for(S s: nextStates){
+	        for(S s: allStates){
 	        	Counter<S> viterbiTransitions = new Counter<S>();
 	        	Counter<S> transitions = trellis.getForwardTransitions(s);
-	        	tempStates.addAll(transitions.keySet());
-        		System.out.println("outer loop");
-	        	System.out.println(s.toString());
-        		System.out.println("inner loop next");
+	        	//tempStates.addAll(transitions.keySet());
+//        		System.out.println("outer loop");
+//	        	System.out.println(s.toString());
+//        		System.out.println("inner loop next");
 	  	      
-	        	for(S s_i: previousStates){
-	        		System.out.println(s_i.toString());
-		        	double p = pie.getCount(position-1 , s_i) * Math.exp( trellis.getForwardTransitions(s_i).getCount(s) );
-		        	viterbiTransitions.setCount(s_i, p);
+	        	for(S s_i: allStates){
+	        		if (pie.getCounter(position - 1).keySet().contains(s_i)){
+	        			double oldPie = pie.getMinCount(position-1 , s_i);
+	        			double pq;
+	        			if (trellis.getForwardTransitions(s_i).keySet().contains(s)){
+		        			pq = trellis.getForwardTransitions(s_i).getCount(s);
+			        		double p = oldPie + pq ;
+				        	viterbiTransitions.setCount(s_i, p);
+		        		}
+	        		}
 	        	}
 	        	S maxState = viterbiTransitions.argMax();
 	        	pie.setCount(position, s, viterbiTransitions.getCount(maxState));
-	        	System.out.println(viterbiTransitions.getCount(maxState));
+//	        	System.out.println(viterbiTransitions.getCount(maxState));
 	        }
 	        
-	        previousStates = nextStates;
-	        nextStates = tempStates;
+//	        previousStates = nextStates;
+//	        nextStates = tempStates;
+	        position += 1;
 	      }
 	      
-	      System.out.println("Done calculating pie");
+//	      System.out.println("Done calculating pie");
 	      
 	      position = 0;
 	      while(position < sentenceLength+3 ){
 	    	  
 	    	  S bestState = pie.getCounter(position).argMax();
-	    	  System.out.println(bestState.toString());
+//	    	  System.out.println(bestState.toString());
 	    	  states.add(bestState);
-	    	  System.out.println(position);
+//	    	  System.out.println(position);
 	    	  position += 1;
 	    	  
 	      }
 	      
-	      System.out.println("Returning States");
+//	      System.out.println("Returning States");
 	      return states;
 	    }
 	  }
@@ -407,11 +424,11 @@ public class POSTaggerTester {
     // to tag a sentence: build its trellis and find a path through that trellis
     public List<String> tag(List<String> sentence) {
       Trellis<State> trellis = buildTrellis(sentence);
-      System.out.println(sentence);
-      System.out.println(sentence.size());
+//      System.out.println(sentence);
+//      System.out.println(sentence.size());
       List<State> states = trellisDecoder.getBestPath(trellis, sentence.size());
       List<String> tags = State.toTagList(states);
-      System.out.println(tags);
+//      System.out.println(tags);
       tags = stripBoundaryTags(tags);
       return tags;
     }
@@ -593,9 +610,12 @@ public class POSTaggerTester {
         if (word == STOP_WORD){
     	  double transition_probability = smoothTransitionProbability(tagsToTags, STOP_TAG, previousTag, precedingTags, makeBigramString(previousTag, STOP_TAG));
     	  if (transition_probability == 0){
-    		  transition_probability  = Double.MIN_VALUE;
+    		  transition_probability  = Double.NEGATIVE_INFINITY;
     	  }
-    	  logScoreCounter.setCount(STOP_TAG, (Math.log(transition_probability)));
+    	  else{
+    		  transition_probability = Math.log(transition_probability);
+    	  }
+    	  logScoreCounter.setCount(STOP_TAG, transition_probability);
     	  return logScoreCounter;
         }
         
@@ -603,21 +623,23 @@ public class POSTaggerTester {
         	Set<String> candidateTags = wordToTags.getCounter(word).keySet();
         	for (String candidateTag : candidateTags) {
         	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTag, previousTag, precedingTags, makeBigramString(previousTag, candidateTag));
-        	  if (transition_probability == 0){
-        		  transition_probability = Double.MIN_VALUE;
-        	  }
-        	  
         	  double emission_probability = tagsToWords.getCount(candidateTag,word);
         	  
-        	  if (emission_probability == 0){
-        		  emission_probability = Double.MIN_VALUE;
+          	  if ((transition_probability == 0) || (emission_probability == 0)){
+          		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
         	  }
-              double logScore = Math.log(transition_probability) + Math.log(emission_probability);
-              logScoreCounter.incrementCount(candidateTag, (logScore));
-        	}
+        	  else{
+        		  transition_probability = Math.log(transition_probability);
+        		  emission_probability = Math.log(emission_probability);
+			      double logScore = (transition_probability) + (emission_probability);
+			      logScoreCounter.setCount(candidateTag, (logScore));
+        	  }
+          	}
         }
         else{
         	// look at suffixes
+        	System.out.println("unknown");
+
         	String bestSuffix = getSuffix(word, SUFFIX_LEN);
         	for(int i=SUFFIX_LEN; i > 0; i--){
         		String newSuffix = getSuffix(word, i);
@@ -631,17 +653,17 @@ public class POSTaggerTester {
     		// get probability for each candidate tag
     		for (String candidateTag : candidateTags) {
           	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTag, previousTag, precedingTags, makeBigramString(previousTag, candidateTag));
-          	  if (transition_probability == 0){
-          		  transition_probability = Double.MIN_VALUE;
-          	  }
-          	  
           	  double emission_probability = tagsToSuffix.getCount(candidateTag, bestSuffix);// * tagsToWords.getCount(candidateTag, UNKNOWN);
-          	  
-          	  if (emission_probability == 0){
-          		  emission_probability = Double.MIN_VALUE;
-          	  }
-                double logScore = Math.log(transition_probability) + Math.log(emission_probability);
-                logScoreCounter.incrementCount(candidateTag, (logScore));
+
+          	  if ((transition_probability == 0) || (emission_probability == 0)){
+          		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
+        	  }
+        	  else{
+        		  transition_probability = Math.log(transition_probability);
+        		  emission_probability = Math.log(emission_probability);
+			      double logScore = (transition_probability) + (emission_probability);
+			      logScoreCounter.setCount(candidateTag, (logScore));
+        	  }
             }
         }        
         
@@ -868,9 +890,21 @@ public class POSTaggerTester {
       double scoreOfGuessedTagging = posTagger.scoreTagging(new TaggedSentence(words, guessedTags));
       if (scoreOfGoldTagging > scoreOfGuessedTagging) {
         numDecodingInversions++;
+        System.out.println("suboptimal");
+        System.out.println(scoreOfGoldTagging);
+        System.out.println(scoreOfGuessedTagging);
+        
         if (verbose) System.out.println("WARNING: Decoder suboptimality detected.  Gold tagging has higher score than guessed tagging.");
       }
+      else{
+          System.out.println("not suboptimal");
+          System.out.println(scoreOfGoldTagging);
+          System.out.println(scoreOfGuessedTagging);
+    	  
+      }
       if (verbose) System.out.println(alignedTaggings(words, goldTags, guessedTags, true) + "\n");
+      //break after one sentence
+      //break;
     }
     System.out.println("Tag Accuracy: " + (numTagsCorrect / numTags) + " (Unknown Accuracy: " + (numUnknownWordsCorrect / numUnknownWords) + ")  Decoder Suboptimalities Detected: " + numDecodingInversions);
   }
@@ -960,14 +994,14 @@ public class POSTaggerTester {
     List<TaggedSentence> validationTaggedSentences = readTaggedSentences(basePath, 2200, 2299);
     System.out.println("done.");
     System.out.print("Loading test sentences...");
-    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2399);
+    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2301);
     System.out.println("done.");
 
     // Construct tagger components
     // TODO : improve on the MostFrequentTagScorer
     LocalTrigramScorer localTrigramScorer = new HMMTagScorer(false);
     // TODO : improve on the GreedyDecoder
-    TrellisDecoder<State> trellisDecoder = new ViterbiDecoder<State>();
+    TrellisDecoder<State> trellisDecoder = new GreedyDecoder<State>();
 
     // Train tagger
     POSTagger posTagger = new POSTagger(localTrigramScorer, trellisDecoder);

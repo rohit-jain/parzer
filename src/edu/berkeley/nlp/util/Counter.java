@@ -86,6 +86,21 @@ public class Counter <E> implements Serializable {
   }
 
   /**
+   * Get the log count of the element, or Double.NEGATIVE_INFINITY if the element is not in the
+   * counter.
+   *
+   * @param key
+   * @return
+   */
+  public double getMinCount(E key) {
+    Double value = entries.get(key);
+    if (value == null)
+      return Double.NEGATIVE_INFINITY;
+    return value;
+  }
+
+  
+  /**
    * Set the count for the given key, clobbering any previous count.
    *
    * @param key

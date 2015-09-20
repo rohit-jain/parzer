@@ -80,6 +80,13 @@ public class CounterMap <K,V> implements java.io.Serializable {
       return 0.0;
     return valueCounter.getCount(value);
   }
+  
+  public double getMinCount(K key, V value) {
+	    Counter<V> valueCounter = counterMap.get(key);
+	    if (valueCounter == null)
+	      return Double.NEGATIVE_INFINITY;
+	    return valueCounter.getMinCount(value);
+  }
 
   /**
    * Gets the sub-counter for the given key.  If there is none, a counter is
