@@ -1,11 +1,26 @@
 package edu.berkeley.nlp.assignments;
 
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.Set;
+
 import edu.berkeley.nlp.io.PennTreebankReader;
 import edu.berkeley.nlp.ling.Tree;
 import edu.berkeley.nlp.ling.Trees;
-import edu.berkeley.nlp.util.*;
-
-import java.util.*;
+import edu.berkeley.nlp.util.BoundedList;
+import edu.berkeley.nlp.util.CommandLineUtils;
+import edu.berkeley.nlp.util.Counter;
+import edu.berkeley.nlp.util.CounterMap;
+import edu.berkeley.nlp.util.Counters;
+import edu.berkeley.nlp.util.Interner;
 
 /**
  * @author Dan Klein
@@ -17,7 +32,7 @@ public class POSTaggerTester {
   static final String START_TAG = "<S>";
   static final String STOP_TAG = "</S>";
   static final String UNKNOWN = "<UNK>";
-  static final int SUFFIX_LEN = 4;
+  static final int SUFFIX_LEN = 10;
 
   /**
    * Tagged sentences are a bundling of a list of words and a list of their
@@ -111,10 +126,15 @@ public class POSTaggerTester {
     public static List<String> toTagList(List<State> states) {
       List<String> tags = new ArrayList<String>();
       if (states.size() > 0) {
+    	try{
         tags.add(states.get(0).getPreviousPreviousTag());
         for (State state : states) {
           tags.add(state.getPreviousTag());
         }
+        }
+    	finally{
+    		System.out.println(states);
+    	}
       }
       return tags;
     }
@@ -261,8 +281,6 @@ public class POSTaggerTester {
   static class ViterbiDecoder <S> implements TrellisDecoder<S> {
 	    public List<S> getBestPath(Trellis<S> trellis, int sentenceLength) {
 	      List<S> states = new ArrayList<S>();
-	      Set<S> previousStates = new HashSet<S>();
-	      Set<S> nextStates = new HashSet<S>();
 	      Set<S> allStates = new HashSet<S>();
 	      List<Map<S,S>> backPointers = new ArrayList<Map<S,S>>();
 	      
@@ -273,6 +291,7 @@ public class POSTaggerTester {
 	      // set position to 0
 	      int position = 0;
 	      allStates.add(currentState);
+	      allStates.add(trellis.getEndState());
 	      backPointers.add(position, null);
 	      
 	      position += 1; 
@@ -285,7 +304,7 @@ public class POSTaggerTester {
 	    	  position += 1;
 	      }
 	      
-//	      System.out.println(allStates);
+	      System.out.println(allStates);
 	      position = 0;
 	      // set the start state probability to 1 for position 0
 	      pie.setCount(position, currentState, 0.0);
@@ -294,12 +313,9 @@ public class POSTaggerTester {
 	      
 	      while( position < sentenceLength+3 ){
 //	        System.out.println(position);
-	      	Set<S> tempStates = new HashSet<S>();
 	        Map<S,S> stateBackPointers = new HashMap<S,S>();
 	        for(S s: allStates){
 	        	Counter<S> viterbiTransitions = new Counter<S>();
-	        	Counter<S> transitions = trellis.getForwardTransitions(s);
-	        	//tempStates.addAll(transitions.keySet());
 //        		System.out.println("outer loop");
 //	        	System.out.println(s.toString());
 //        		System.out.println("inner loop next");
@@ -313,7 +329,13 @@ public class POSTaggerTester {
 			        		double p = oldPie + pq ;
 				        	viterbiTransitions.setCount(s_i, p);
 		        		}
+	        			else{
+	        				viterbiTransitions.setCount(s_i, Double.NEGATIVE_INFINITY);
+	        			}
 	        		}
+        			else{
+        				viterbiTransitions.setCount(s_i, Double.NEGATIVE_INFINITY);
+        			}
 	        	}
 	        	S maxState = viterbiTransitions.argMax();
 	        	stateBackPointers.put(s, maxState);
@@ -336,13 +358,16 @@ public class POSTaggerTester {
 	      while(position > 0 ){
 	    	  
 	    	  Map<S,S> lastStateBackpointers = backPointers.get(position);
+		      System.out.println(lastStateBackpointers);
 	    	  S newBestState = lastStateBackpointers.get(lastBestState);
+	    	  System.out.println(newBestState);
 	    	  states.add(newBestState);
 	    	  lastBestState = newBestState;
 	    	  position -= 1;
 	    	  
 	      }
-	      
+
+
 	      List<S> tagSeq = new ArrayList<S>();
 	      position = sentenceLength+2;
 	      
@@ -350,7 +375,6 @@ public class POSTaggerTester {
 	    	  tagSeq.add(states.remove(position));
 	    	  position -= 1;
 	      }
-//	      System.out.println("Returning States");
 	      return tagSeq;
 	    }
 	  }
@@ -438,11 +462,11 @@ public class POSTaggerTester {
     // to tag a sentence: build its trellis and find a path through that trellis
     public List<String> tag(List<String> sentence) {
       Trellis<State> trellis = buildTrellis(sentence);
-//      System.out.println(sentence);
-//      System.out.println(sentence.size());
+      System.out.println(sentence);
+      System.out.println(sentence.size());
       List<State> states = trellisDecoder.getBestPath(trellis, sentence.size());
       List<String> tags = State.toTagList(states);
-//      System.out.println(tags);
+      System.out.println(tags);
       tags = stripBoundaryTags(tags);
       return tags;
     }
@@ -876,6 +900,36 @@ public class POSTaggerTester {
     }
     return taggedSentences;
   }
+  
+  private static List<TaggedSentence> readTaggedSentencesTwitter(String path, int low, int high) {
+	    List<TaggedSentence> taggedSentences = new ArrayList<TaggedSentence>();
+	    int  lineNumber = 0;
+	    try {
+	        FileReader fr = new FileReader(path);
+	        Scanner in = new Scanner(fr);
+	        while (in.hasNext()) {
+	        	lineNumber++;
+	        	String temp = in.nextLine();
+	        	List<String> tokens = new ArrayList<String>();
+	        	List<String> posTags = new ArrayList<String>();
+	        	while(temp.length()>0 && in.hasNext()){
+	        		String[] line = temp.split(" ");
+	        		tokens.add(line[0]);
+	        		posTags.add(line[1]);
+	        		temp = in.nextLine();
+	        	}
+	        	if ((lineNumber >=low) && (lineNumber <= high)){
+		        	List<String> words = new BoundedList<String>(tokens, START_WORD, STOP_WORD);
+		            List<String> tags = new BoundedList<String>(posTags, START_TAG, STOP_TAG);
+		            taggedSentences.add(new TaggedSentence(words, tags));
+	        	}
+	        }
+	    }
+	    catch (FileNotFoundException ex) {
+	    	System.out.println("Tweets file not found");
+	    }
+	    return taggedSentences;
+  }
 
   private static void evaluateTagger(POSTagger posTagger, List<TaggedSentence> taggedSentences, Set<String> trainingVocabulary, boolean verbose) {
     double numTags = 0.0;
@@ -976,6 +1030,7 @@ public class POSTaggerTester {
 
     // Set up default parameters and settings
     String basePath = ".";
+    String tweetPath = ".";
     boolean verbose = false;
     boolean useValidation = true;
 
@@ -987,6 +1042,13 @@ public class POSTaggerTester {
     }
     System.out.println("Using base path: " + basePath);
 
+    // The path to the assignment data
+    if (argMap.containsKey("-tweets")) {
+      tweetPath = argMap.get("-tweets");
+    }
+    System.out.println("Using tweets base path: " + tweetPath);
+
+    
     // Whether to use the validation or test set
     if (argMap.containsKey("-test")) {
       String testString = argMap.get("-test");
@@ -1003,13 +1065,19 @@ public class POSTaggerTester {
     // Read in data
     System.out.print("Loading training sentences...");
     List<TaggedSentence> trainTaggedSentences = readTaggedSentences(basePath, 200, 2199);
-    Set<String> trainingVocabulary = extractVocabulary(trainTaggedSentences);
+    List<TaggedSentence> trainTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 1, 380);
+
+    Set<String> trainingVocabulary = extractVocabulary(trainTaggedSentencesTwitter);
     System.out.println("done.");
     System.out.print("Loading validation sentences...");
     List<TaggedSentence> validationTaggedSentences = readTaggedSentences(basePath, 2200, 2299);
+    List<TaggedSentence> validationTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 381, 400);
+
     System.out.println("done.");
     System.out.print("Loading test sentences...");
     List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2399);
+    List<TaggedSentence> testTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 401, 780);
+
     System.out.println("done.");
 
     // Construct tagger components
@@ -1020,15 +1088,15 @@ public class POSTaggerTester {
 
     // Train tagger
     POSTagger posTagger = new POSTagger(localTrigramScorer, trellisDecoder);
-    posTagger.train(trainTaggedSentences);
-    posTagger.validate(validationTaggedSentences);
+    posTagger.train(trainTaggedSentencesTwitter);
+    posTagger.validate(validationTaggedSentencesTwitter);
     System.out.println("done validating");
     // Evaluation set, use either test of validation (for dev)
     final List<TaggedSentence> evalTaggedSentences;
     if (useValidation) {
-    	evalTaggedSentences = validationTaggedSentences;
+    	evalTaggedSentences = validationTaggedSentencesTwitter;
     } else {
-    	evalTaggedSentences = testTaggedSentences;
+    	evalTaggedSentences = testTaggedSentencesTwitter;
     }
     
     // Test tagger
