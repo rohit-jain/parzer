@@ -17,7 +17,7 @@ public class POSTaggerTester {
   static final String START_TAG = "<S>";
   static final String STOP_TAG = "</S>";
   static final String UNKNOWN = "<UNK>";
-  static final int SUFFIX_LEN = 5;
+  static final int SUFFIX_LEN = 4;
 
   /**
    * Tagged sentences are a bundling of a list of words and a list of their
@@ -264,6 +264,7 @@ public class POSTaggerTester {
 	      Set<S> previousStates = new HashSet<S>();
 	      Set<S> nextStates = new HashSet<S>();
 	      Set<S> allStates = new HashSet<S>();
+	      List<Map<S,S>> backPointers = new ArrayList<Map<S,S>>();
 	      
 	      CounterMap< Integer , S> pie = new CounterMap< Integer , S>();
 	      
@@ -271,8 +272,9 @@ public class POSTaggerTester {
 	      
 	      // set position to 0
 	      int position = 0;
-	      
 	      allStates.add(currentState);
+	      backPointers.add(position, null);
+	      
 	      position += 1; 
 	      while( position < sentenceLength+3 ){
 	    	  Set<S> allTempStates = new HashSet<S>();
@@ -293,7 +295,7 @@ public class POSTaggerTester {
 	      while( position < sentenceLength+3 ){
 //	        System.out.println(position);
 	      	Set<S> tempStates = new HashSet<S>();
-	        
+	        Map<S,S> stateBackPointers = new HashMap<S,S>();
 	        for(S s: allStates){
 	        	Counter<S> viterbiTransitions = new Counter<S>();
 	        	Counter<S> transitions = trellis.getForwardTransitions(s);
@@ -314,30 +316,42 @@ public class POSTaggerTester {
 	        		}
 	        	}
 	        	S maxState = viterbiTransitions.argMax();
+	        	stateBackPointers.put(s, maxState);
 	        	pie.setCount(position, s, viterbiTransitions.getCount(maxState));
+//	        	System.out.println("bestState");
 //	        	System.out.println(viterbiTransitions.getCount(maxState));
+//	        	System.out.println(maxState);
 	        }
-	        
+	        backPointers.add(position, stateBackPointers);
 //	        previousStates = nextStates;
 //	        nextStates = tempStates;
 	        position += 1;
 	      }
 	      
 //	      System.out.println("Done calculating pie");
+	      S lastBestState = trellis.getEndState();
+	      states.add(lastBestState);
+	      position = sentenceLength+2;
 	      
-	      position = 0;
-	      while(position < sentenceLength+3 ){
+	      while(position > 0 ){
 	    	  
-	    	  S bestState = pie.getCounter(position).argMax();
-//	    	  System.out.println(bestState.toString());
-	    	  states.add(bestState);
-//	    	  System.out.println(position);
-	    	  position += 1;
+	    	  Map<S,S> lastStateBackpointers = backPointers.get(position);
+	    	  S newBestState = lastStateBackpointers.get(lastBestState);
+	    	  states.add(newBestState);
+	    	  lastBestState = newBestState;
+	    	  position -= 1;
 	    	  
 	      }
 	      
+	      List<S> tagSeq = new ArrayList<S>();
+	      position = sentenceLength+2;
+	      
+	      while(states.size()>0){
+	    	  tagSeq.add(states.remove(position));
+	    	  position -= 1;
+	      }
 //	      System.out.println("Returning States");
-	      return states;
+	      return tagSeq;
 	    }
 	  }
 
@@ -638,7 +652,7 @@ public class POSTaggerTester {
         }
         else{
         	// look at suffixes
-        	System.out.println("unknown");
+//        	System.out.println("unknown");
 
         	String bestSuffix = getSuffix(word, SUFFIX_LEN);
         	for(int i=SUFFIX_LEN; i > 0; i--){
@@ -869,6 +883,7 @@ public class POSTaggerTester {
     double numUnknownWords = 0.0;
     double numUnknownWordsCorrect = 0.0;
     int numDecodingInversions = 0;
+    int count = 0;
     for (TaggedSentence taggedSentence : taggedSentences) {
       List<String> words = taggedSentence.getWords();
       List<String> goldTags = taggedSentence.getTags();
@@ -896,12 +911,12 @@ public class POSTaggerTester {
         
         if (verbose) System.out.println("WARNING: Decoder suboptimality detected.  Gold tagging has higher score than guessed tagging.");
       }
-      else{
-          System.out.println("not suboptimal");
-          System.out.println(scoreOfGoldTagging);
-          System.out.println(scoreOfGuessedTagging);
-    	  
-      }
+//      else{
+//          System.out.println("not suboptimal");
+//          System.out.println(scoreOfGoldTagging);
+//          System.out.println(scoreOfGuessedTagging);
+//    	  
+//      }
       if (verbose) System.out.println(alignedTaggings(words, goldTags, guessedTags, true) + "\n");
       //break after one sentence
       //break;
@@ -994,14 +1009,14 @@ public class POSTaggerTester {
     List<TaggedSentence> validationTaggedSentences = readTaggedSentences(basePath, 2200, 2299);
     System.out.println("done.");
     System.out.print("Loading test sentences...");
-    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2301);
+    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2399);
     System.out.println("done.");
 
     // Construct tagger components
     // TODO : improve on the MostFrequentTagScorer
     LocalTrigramScorer localTrigramScorer = new HMMTagScorer(false);
     // TODO : improve on the GreedyDecoder
-    TrellisDecoder<State> trellisDecoder = new GreedyDecoder<State>();
+    TrellisDecoder<State> trellisDecoder = new ViterbiDecoder<State>();
 
     // Train tagger
     POSTagger posTagger = new POSTagger(localTrigramScorer, trellisDecoder);
