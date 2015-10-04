@@ -23,18 +23,25 @@ import edu.berkeley.nlp.util.CounterMap;
 import edu.berkeley.nlp.util.Counters;
 import edu.berkeley.nlp.util.FastPriorityQueue;
 import edu.berkeley.nlp.util.Interner;
+import edu.berkeley.nlp.util.Pair;
 
 /**
  * @author Dan Klein
  */
 public class POSTaggerTester {
 
-  static final String START_WORD = "<S>";
-  static final String STOP_WORD = "</S>";
+  static final String START_WORD = "START";
+  static final String STOP_WORD = "STOP";
   static final String START_TAG = "<S>";
   static final String STOP_TAG = "</S>";
   static final String UNKNOWN = "<UNK>";
+  static final boolean START_CAP = true;
+  static final boolean STOP_CAP = true;
   static final int SUFFIX_LEN = 10;
+
+  public boolean isCapitalised(String s){
+  	return Character.isUpperCase(s.codePointAt(0));
+  }
 
   /**
    * Tagged sentences are a bundling of a list of words and a list of their
@@ -43,7 +50,7 @@ public class POSTaggerTester {
   static class TaggedSentence {
     List<String> words;
     List<String> tags;
-
+    
     public int size() {
       return words.size();
     }
@@ -55,7 +62,7 @@ public class POSTaggerTester {
     public List<String> getTags() {
       return tags;
     }
-
+    
     public String toString() {
       StringBuilder sb = new StringBuilder();
       for (int position = 0; position < words.size(); position++) {
@@ -85,6 +92,10 @@ public class POSTaggerTester {
       result = (words != null ? words.hashCode() : 0);
       result = 29 * result + (tags != null ? tags.hashCode() : 0);
       return result;
+    }
+
+    public boolean isCapitalised(String s){
+    	return Character.isUpperCase(s.codePointAt(0));
     }
 
     public TaggedSentence(List<String> words, List<String> tags) {
@@ -499,11 +510,17 @@ public class POSTaggerTester {
     int position;
     String previousTag;
     String previousPreviousTag;
-
+    Boolean previousCaps;
+    Boolean previousPreviousCaps;
+    
+    public boolean isCapitalised(String s){
+    	return Character.isUpperCase(s.codePointAt(0));
+    }
+    
     public List<String> getWords() {
       return words;
     }
-
+    
     public String getCurrentWord() {
       return words.get(position);
     }
@@ -519,6 +536,14 @@ public class POSTaggerTester {
     public String getPreviousPreviousTag() {
       return previousPreviousTag;
     }
+    
+    public Boolean getPreviousCaps() {
+        return previousCaps;
+    }
+
+	public Boolean getPreviousPreviousCaps() {
+	  return previousPreviousCaps;
+	}
 
     public String toString() {
       return "[" + getPreviousPreviousTag() + ", " + getPreviousTag() + ", " + getCurrentWord() + "]";
@@ -529,14 +554,16 @@ public class POSTaggerTester {
       this.position = position;
       this.previousTag = previousTag;
       this.previousPreviousTag = previousPreviousTag;
+      this.previousCaps = isCapitalised(words.get(position-1));
+      this.previousPreviousCaps = isCapitalised(words.get(position-2));
     }
   }
 
   /**
-   * A LabeledLocalTrigramContext is a context plus the correct tag for that
+   * A OldLabeledLocalTrigramContext is a context plus the correct tag for that
    * position -- basically a LabeledFeatureVector
    */
-  static class LabeledLocalTrigramContext extends LocalTrigramContext {
+  static class OldLabeledLocalTrigramContext extends LocalTrigramContext {
     String currentTag;
 
     public String getCurrentTag() {
@@ -547,11 +574,39 @@ public class POSTaggerTester {
       return "[" + getPreviousPreviousTag() + ", " + getPreviousTag() + ", " + getCurrentWord() + "_" + getCurrentTag() + "]";
     }
 
-    public LabeledLocalTrigramContext(List<String> words, int position, String previousPreviousTag, String previousTag, String currentTag) {
+    public OldLabeledLocalTrigramContext(List<String> words, int position, String previousPreviousTag, String previousTag, String currentTag) {
       super(words, position, previousPreviousTag, previousTag);
       this.currentTag = currentTag;
     }
   }
+  
+  /**
+   * A LabeledLocalTrigramContext is a context plus the correct tag for that
+   * position -- basically a LabeledFeatureVector
+   */
+  static class LabeledLocalTrigramContext extends LocalTrigramContext {
+    String currentTag;
+    Boolean currentCaps;
+
+    public String getCurrentTag() {
+      return currentTag;
+    }
+
+    public Boolean getCurrentCaps(){
+    	return currentCaps;
+    }
+    
+    public String toString() {
+      return "[" + getPreviousPreviousTag() + ", " + getPreviousTag() + ", " + getCurrentWord() + "_" + getCurrentTag() + "]";
+    }
+
+    public LabeledLocalTrigramContext(List<String> words, int position, String previousPreviousTag, String previousTag, String currentTag) {
+      super(words, position, previousPreviousTag, previousTag);
+      this.currentTag = currentTag;
+      this.currentCaps = isCapitalised(words.get(position));
+    }
+  }
+
 
   /**
    * LocalTrigramScorers assign scores to tags occuring in specific
@@ -577,20 +632,20 @@ public class POSTaggerTester {
 
     boolean restrictTrigrams; // if true, assign log score of Double.NEGATIVE_INFINITY to illegal tag trigrams.
 
-    CounterMap<String, String> tagsToTags = new CounterMap<String, String>();
-    CounterMap<String, String> previousTagToTags = new CounterMap<String, String>();
-    CounterMap<String, String> tagsToWords = new CounterMap<String, String>();
+    CounterMap<String, Pair<String, Boolean>> tagsToTags = new CounterMap<String, Pair<String, Boolean>>();
+    CounterMap<String, Pair<String, Boolean>> previousTagToTags = new CounterMap<String, Pair<String, Boolean>>();
+    CounterMap<Pair<String, Boolean>, String> tagsToWords = new CounterMap<Pair<String, Boolean>, String>();
     
-    CounterMap<String, String> suffixToTags = new CounterMap<String, String>();
-    CounterMap<String, String> capSuffixToTags = new CounterMap<String, String>();
+    CounterMap<String, Pair<String, Boolean>> suffixToTags = new CounterMap<String, Pair<String, Boolean>>();
+    CounterMap<String, Pair<String, Boolean>> capSuffixToTags = new CounterMap<String, Pair<String, Boolean>>();
 
-    CounterMap<String, String> tagsToSuffix = new CounterMap<String, String>();
-    CounterMap<String, String> capTagsToSuffix = new CounterMap<String, String>();
+    CounterMap<Pair<String, Boolean>, String> tagsToSuffix = new CounterMap<Pair<String, Boolean>, String>();
+    CounterMap<Pair<String, Boolean>, String> capTagsToSuffix = new CounterMap<Pair<String, Boolean>, String>();
 
-    CounterMap<String, String> smoothedSuffixToTags = new CounterMap<String, String>();
-    CounterMap<String, String> capSmoothedSuffixToTags = new CounterMap<String, String>();
+    CounterMap<String, Pair<String, Boolean>> smoothedSuffixToTags = new CounterMap<String, Pair<String, Boolean>>();
+    CounterMap<String, Pair<String, Boolean>> capSmoothedSuffixToTags = new CounterMap<String, Pair<String, Boolean>>();
     
-    CounterMap<String, String> wordToTags = new CounterMap<String, String>();
+    CounterMap<String, Pair<String, Boolean>> wordToTags = new CounterMap<String, Pair<String, Boolean>>();
     
     Counter<String> knownSuffixes = new Counter<String>();
     Counter<String> capKnownSuffixes = new Counter<String>();
@@ -598,9 +653,9 @@ public class POSTaggerTester {
     Counter<String> knownWords = new Counter<String>();
     Set<String> seenTagTrigrams = new HashSet<String>();
     
-    Counter<String> infrequentTags = new Counter<String>();
-    Counter<String> t3 = new Counter<String>();
-    Counter<String> t2 = new Counter<String>();
+    CounterMap<Boolean, String> infrequentTags = new CounterMap<Boolean, String>();
+    Counter<Pair<String, Boolean>> t3 = new Counter<Pair<String, Boolean>>();
+    Counter<Pair<String, Boolean>> t2 = new Counter<Pair<String, Boolean>>();
     Counter<String> t1t2 = new Counter<String>();
     Counter<String> t2t3 = new Counter<String>();
     Counter<String> t1t2t3 = new Counter<String>();
@@ -617,14 +672,17 @@ public class POSTaggerTester {
     public int getHistorySize() {
       return 2;
     }
+    
+    public boolean isCapitalised(String s){
+      	return Character.isUpperCase(s.codePointAt(0));
+    }
+    
 
-    public Double smoothTransitionProbability(CounterMap<String, String> trigramCounter, String tag, String previousTag, String precedingTags, String bi_tag){
+    public Double smoothTransitionProbability(CounterMap<String, Pair<String, Boolean>> trigramCounter, Pair<String, Boolean> tagPair, Pair<String, Boolean> previousTagPair, String precedingTags, String bi_tag){
     	Double p = 0.0;
-    	Double p_t3 = t3.getCount(tag)/t3.totalCount();
-    	Double p_t3t2 = t2t3.getCount(bi_tag)/t2.getCount(previousTag);
-    	if (p_t3t2 != previousTagToTags.getCount(previousTag, tag))
-    		System.out.println("mismatch");
-    	Double p_t1t2t3 = trigramCounter.getCount(precedingTags, tag);
+    	Double p_t3 = t3.getCount(tagPair)/t3.totalCount();
+    	Double p_t3t2 = t2t3.getCount(bi_tag)/t2.getCount(previousTagPair);
+    	Double p_t1t2t3 = trigramCounter.getCount(precedingTags, tagPair);
     	p = (lambda1 * p_t3) + (lambda2 * p_t3t2) + (lambda3 * p_t1t2t3);
     	return p;
     }
@@ -632,13 +690,20 @@ public class POSTaggerTester {
     public Counter<String> getLogScoreCounter(LocalTrigramContext localTrigramContext) {
         int position = localTrigramContext.getPosition();
         String word = localTrigramContext.getWords().get(position);
-        String precedingTags = makeBigramString(localTrigramContext.getPreviousPreviousTag(), localTrigramContext.getPreviousTag());
         String previousTag = localTrigramContext.getPreviousTag();
+        String previousPreviousTag = localTrigramContext.getPreviousPreviousTag();
+        Boolean previousCaps = localTrigramContext.getPreviousCaps();
+        Boolean previousPreviousCaps = localTrigramContext.getPreviousPreviousCaps();
+        String precedingTags = makeBigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps);
+        Pair<String, Boolean> previousTagPair = new Pair<String, Boolean>(previousTag, previousCaps);
         Counter<String> logScoreCounter = new Counter<String>();
         
         
         if (word == STOP_WORD){
-    	  double transition_probability = smoothTransitionProbability(tagsToTags, STOP_TAG, previousTag, precedingTags, makeBigramString(previousTag, STOP_TAG));
+          Pair<String, Boolean> tagPair = new Pair<String, Boolean>(STOP_TAG, true);
+          String previousCurrent = makeBigramString(previousTag + previousCaps, STOP_TAG + true);          
+          
+    	  double transition_probability = smoothTransitionProbability(tagsToTags, tagPair, previousTagPair, precedingTags, previousCurrent);
     	  if (transition_probability == 0){
     		  transition_probability  = Double.NEGATIVE_INFINITY;
     	  }
@@ -650,10 +715,13 @@ public class POSTaggerTester {
         }
         
         if (knownWords.keySet().contains(word)){
-        	Set<String> candidateTags = wordToTags.getCounter(word).keySet();
-        	for (String candidateTag : candidateTags) {
-        	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTag, previousTag, precedingTags, makeBigramString(previousTag, candidateTag));
-        	  double emission_probability = tagsToWords.getCount(candidateTag,word);
+        	Set<Pair<String, Boolean>> candidateTags = wordToTags.getCounter(word).keySet();
+        	for (Pair<String, Boolean> candidateTagPair : candidateTags) {
+              String previousCurrent = makeBigramString(previousTag + previousCaps, candidateTagPair.getFirst() + candidateTagPair.getSecond());
+        	  String candidateTag = candidateTagPair.getFirst();
+        	  
+        	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTagPair, previousTagPair, precedingTags, previousCurrent);
+        	  double emission_probability = tagsToWords.getCount(candidateTagPair,word);
         	  
           	  if ((transition_probability == 0) || (emission_probability == 0)){
           		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
@@ -673,8 +741,8 @@ public class POSTaggerTester {
 
     		
         	// get candidate tags
-    		Set<String> candidateTags;
-    		CounterMap<String,String> tagsSuffix;
+    		Set<Pair<String,Boolean>> candidateTags;
+    		CounterMap<Pair<String,Boolean>,String> tagsSuffix;
     		
     		if(!isCapitalised(word)){
             	for(int i=SUFFIX_LEN; i > 0; i--){
@@ -703,9 +771,12 @@ public class POSTaggerTester {
     		
     		
     		// get probability for each candidate tag
-    		for (String candidateTag : candidateTags) {
-          	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTag, previousTag, precedingTags, makeBigramString(previousTag, candidateTag));
-          	  double emission_probability = tagsSuffix.getCount(candidateTag, bestSuffix);// * tagsToWords.getCount(candidateTag, UNKNOWN);
+    		for (Pair<String,Boolean> candidateTagPair : candidateTags) {
+              String previousCurrent = makeBigramString(previousTag + previousCaps, candidateTagPair.getFirst() + candidateTagPair.getSecond());
+          	  String candidateTag = candidateTagPair.getFirst();
+
+          	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTagPair, previousTagPair, precedingTags, previousCurrent);
+          	  double emission_probability = tagsSuffix.getCount(candidateTagPair, bestSuffix);// * tagsToWords.getCount(candidateTag, UNKNOWN);
 
           	  if ((transition_probability == 0) || (emission_probability == 0)){
           		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
@@ -731,50 +802,51 @@ public class POSTaggerTester {
       return previousPreviousTag + " " + previousTag + " " + currentTag;
     }
     
-    public Double pHat(int l, String s, String t, double theta){
+    public Double pHat(int l, String s, Pair<String, Boolean> t, double theta){
     	if(l == 0){
     		// t3 is basically known tags
-    		return infrequentTags.getCount(t);
+    		return infrequentTags.getCounter(false).getCount(t.getFirst());
     	}
     	return (suffixToTags.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHat(l-1, s, t, theta)) )/( 1 + theta);
     }
     
-    public Double pHatCap(int l, String s, String t, double theta){
+    public Double pHatCap(int l, String s, Pair<String, Boolean> t, double theta){
     	if(l == 0){
     		// t3 is basically known tags
-    		return infrequentTags.getCount(t);
+    		return infrequentTags.getCounter(true).getCount(t.getFirst());
     	}
     	return (capSuffixToTags.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHatCap(l-1, s, t, theta)) )/( 1 + theta);
     }
     
-    public boolean isCapitalised(String s){
-    	return Character.isUpperCase(s.codePointAt(0));
-    }
 
     public void train(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
-      Double theta = 0.0;
- 
+      
       // collect word-tag counts
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
         String word = labeledLocalTrigramContext.getCurrentWord();
         String tag = labeledLocalTrigramContext.getCurrentTag();
+        Boolean caps = labeledLocalTrigramContext.getCurrentCaps();
         String previousTag = labeledLocalTrigramContext.getPreviousTag();
         String previousPreviousTag = labeledLocalTrigramContext.getPreviousPreviousTag();
-        String precedingTags = makeBigramString(previousTag, previousPreviousTag);
-        String trigram = makeTrigramString(labeledLocalTrigramContext.getPreviousPreviousTag(), labeledLocalTrigramContext.getPreviousTag(), labeledLocalTrigramContext.getCurrentTag());        
+        Boolean previousCaps = labeledLocalTrigramContext.getPreviousCaps();
+        Boolean previousPreviousCaps = labeledLocalTrigramContext.getPreviousPreviousCaps();
+        String precedingTags = makeBigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps);
+        String trigram = makeTrigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps, tag + caps);        
+        Pair<String, Boolean> tagPair = new Pair<String, Boolean>(tag,caps);
+        Pair<String, Boolean> previousTagPair = new Pair<String, Boolean>(previousTag, previousCaps);
         
-		tagsToTags.incrementCount(precedingTags, tag, 1.0);
-        tagsToWords.incrementCount(tag, word, 1.0);
-        wordToTags.incrementCount(word, tag, 1.0);
-        previousTagToTags.incrementCount(previousTag, tag, 1.0);
+        tagsToTags.incrementCount(precedingTags, tagPair , 1.0);
+        tagsToWords.incrementCount(tagPair, word, 1.0);
+        wordToTags.incrementCount(word, tagPair, 1.0);
+        previousTagToTags.incrementCount(previousTag + previousCaps, tagPair, 1.0);
         seenTagTrigrams.add(trigram);
         
         knownWords.incrementCount(word, 1.0);
         
-        t2.incrementCount(previousTag, 1.0);
-        t3.incrementCount(tag,1.0);
+        t2.incrementCount(previousTagPair, 1.0);
+        t3.incrementCount(tagPair,1.0);
         t1t2.incrementCount(precedingTags, 1.0);
-        t2t3.incrementCount(makeBigramString(previousTag, tag), 1.0);
+        t2t3.incrementCount(makeBigramString(previousTag+previousCaps, tag+caps), 1.0);
         t1t2t3.incrementCount(trigram, 1.0);
         
       }
@@ -782,29 +854,31 @@ public class POSTaggerTester {
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
           String word = labeledLocalTrigramContext.getCurrentWord();
           String tag = labeledLocalTrigramContext.getCurrentTag();
-          if(knownWords.getCount(word) < 100){
+          Boolean caps = labeledLocalTrigramContext.getCurrentCaps();
+          Pair<String, Boolean> tagPair = new Pair<String, Boolean>(tag, caps);
+          if(knownWords.getCount(word) < 11){
         	  
         	  if(!isCapitalised(word)){
 		          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
 		  			String suffix = getSuffix(word, i);
-		  			suffixToTags.incrementCount(suffix, tag, 1.0);
+		  			suffixToTags.incrementCount(suffix, tagPair, 1.0);
 		  			knownSuffixes.incrementCount(suffix, 1.0);
 		          }
         	  }
         	  else{
 		          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
 		  			String suffix = getSuffix(word, i);
-		  			capSuffixToTags.incrementCount(suffix, tag, 1.0);
+		  			capSuffixToTags.incrementCount(suffix, tagPair, 1.0);
 		  			capKnownSuffixes.incrementCount(suffix, 1.0);
 		          }
         	  }
-//          }
-          infrequentTags.incrementCount(tag, 1.0);
           }
+          infrequentTags.incrementCount( caps, tag, 1.0);
+//          }
        }
       
       // TODO: add one unknown to every tag
-      for (String tag: tagsToWords.keySet()){
+      for (Pair<String, Boolean> tag: tagsToWords.keySet()){
     	  tagsToWords.incrementCount(tag, UNKNOWN, 1.0);
       }
 
@@ -817,21 +891,22 @@ public class POSTaggerTester {
       knownSuffixes = Counters.normalize(knownSuffixes);
       capKnownSuffixes = Counters.normalize(capKnownSuffixes);
 
-      infrequentTags = Counters.normalize(infrequentTags);
+      infrequentTags = Counters.conditionalNormalize(infrequentTags);
       
-      theta = infrequentTags.standardDeviation();
+      Double theta = infrequentTags.getCounter(false).standardDeviation();
+      Double capTheta = infrequentTags.getCounter(true).standardDeviation();
       System.out.printf("Theta : %f\n",theta);
-      
+      System.out.printf("Theta : %f\n",capTheta);
       // smoothed suffix probabilities
       for (String s: suffixToTags.keySet()){
-    	for (String t: suffixToTags.getCounter(s).keySet()){
+    	for (Pair<String, Boolean> t: suffixToTags.getCounter(s).keySet()){
     		// different distribution to protect old calc
     		smoothedSuffixToTags.setCount(s, t, pHat(s.length(), s, t, theta));
     	}  
       }
       
       for (String s: capSuffixToTags.keySet()){
-      	for (String t: capSuffixToTags.getCounter(s).keySet()){
+      	for (Pair<String, Boolean> t: capSuffixToTags.getCounter(s).keySet()){
       		// different distribution to protect old calc
       		capSmoothedSuffixToTags.setCount(s, t, pHatCap(s.length(), s, t, theta));
       	}  
@@ -839,16 +914,16 @@ public class POSTaggerTester {
       
       // apply bayes rule to get tags to suffix
       for(String s: smoothedSuffixToTags.keySet()){
-    	  for(String t: smoothedSuffixToTags.getCounter(s).keySet()){
-    		  Double p = (smoothedSuffixToTags.getCounter(s).getCount(t) * knownSuffixes.getCount(s))/infrequentTags.getCount(t);
+    	  for(Pair<String, Boolean> t: smoothedSuffixToTags.getCounter(s).keySet()){
+    		  Double p = (smoothedSuffixToTags.getCounter(s).getCount(t) * knownSuffixes.getCount(s))/infrequentTags.getCounter(false).getCount(t.getFirst());
     		  tagsToSuffix.incrementCount(t, s, p);
     	  }
       }
       
    // apply bayes rule to get tags to suffix
       for(String s: capSmoothedSuffixToTags.keySet()){
-    	  for(String t: capSmoothedSuffixToTags.getCounter(s).keySet()){
-    		  Double p = (capSmoothedSuffixToTags.getCounter(s).getCount(t) * capKnownSuffixes.getCount(s))/infrequentTags.getCount(t);
+    	  for(Pair<String, Boolean> t: capSmoothedSuffixToTags.getCounter(s).keySet()){
+    		  Double p = (capSmoothedSuffixToTags.getCounter(s).getCount(t) * capKnownSuffixes.getCount(s))/infrequentTags.getCounter(true).getCount(t.getFirst());
     		  capTagsToSuffix.incrementCount(t, s, p);
     	  }
       }
@@ -856,20 +931,24 @@ public class POSTaggerTester {
 
     public void validate(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
       // tune using linear interpolation
-    	Set<String> seenSmoothingTrigrams = new HashSet<String>();
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
-          String word = labeledLocalTrigramContext.getCurrentWord();
           String tag = labeledLocalTrigramContext.getCurrentTag();
+          Boolean caps = labeledLocalTrigramContext.getCurrentCaps();
           String previousTag = labeledLocalTrigramContext.getPreviousTag();
           String previousPreviousTag = labeledLocalTrigramContext.getPreviousPreviousTag();
-          String precedingTags = makeBigramString(previousTag, previousPreviousTag);
-          String trigram = makeTrigramString(labeledLocalTrigramContext.getPreviousPreviousTag(), labeledLocalTrigramContext.getPreviousTag(), labeledLocalTrigramContext.getCurrentTag());
-    	  
+          Boolean previousCaps = labeledLocalTrigramContext.getPreviousCaps();
+          Boolean previousPreviousCaps = labeledLocalTrigramContext.getPreviousPreviousCaps();
+          String precedingTags = makeBigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps);
+          String trigram = makeTrigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps, tag + caps);        
+          Pair<String, Boolean> tagPair = new Pair<String, Boolean>(tag,caps);
+          Pair<String, Boolean> previousTagPair = new Pair<String, Boolean>(previousTag, previousCaps);
+
+          
           Double fif2f3 = t1t2t3.getCount(trigram);
           Double f1f2 = t1t2.getCount(precedingTags);
-          Double f2f3 = t2t3.getCount(makeBigramString(previousTag, tag));
-          Double f2 = t2.getCount(previousTag);
-          Double f3 = t3.getCount(tag);
+          Double f2f3 = t2t3.getCount(makeBigramString(previousTag + previousCaps, tag + caps));
+          Double f2 = t2.getCount(previousTagPair);
+          Double f3 = t3.getCount(tagPair);
           Double N = t3.totalCount();
           if(fif2f3>0){
         	  Double v3 = (fif2f3 - 1)/(f1f2 -1);
@@ -896,6 +975,11 @@ public class POSTaggerTester {
         	  else if ((v1==v3) && (v1>v2)){
         		  lambda3 += (fif2f3/2);
         		  lambda1 += (fif2f3/2);
+        	  }
+        	  else if ((v1==v3) && (v1==v2)){
+        		  lambda1 += (fif2f3/3);
+        		  lambda2 += (fif2f3/3);
+        		  lambda3 += (fif2f3/3);
         	  }
 
           }
@@ -1115,7 +1199,7 @@ public class POSTaggerTester {
     List<TaggedSentence> trainTaggedSentences = readTaggedSentences(basePath, 200, 2199);
     List<TaggedSentence> trainTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 1, 380);
 
-    List<TaggedSentence> devTaggedSentences = readTaggedSentences(basePath, 2200, 2210);
+    List<TaggedSentence> devTaggedSentences = readTaggedSentences(basePath, 2200, 2299);
 
     
 //    trainTaggedSentences.addAll(trainTaggedSentencesTwitter);
@@ -1130,7 +1214,7 @@ public class POSTaggerTester {
     
     System.out.println("done.");
     System.out.print("Loading test sentences...");
-    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2310);
+    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2399);
     List<TaggedSentence> testTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 401, 780);
 
     System.out.println("done.");
