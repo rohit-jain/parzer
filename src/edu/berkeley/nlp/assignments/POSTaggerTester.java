@@ -9,9 +9,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 import edu.berkeley.nlp.io.PennTreebankReader;
 import edu.berkeley.nlp.ling.Tree;
@@ -21,7 +21,6 @@ import edu.berkeley.nlp.util.CommandLineUtils;
 import edu.berkeley.nlp.util.Counter;
 import edu.berkeley.nlp.util.CounterMap;
 import edu.berkeley.nlp.util.Counters;
-import edu.berkeley.nlp.util.FastPriorityQueue;
 import edu.berkeley.nlp.util.Interner;
 import edu.berkeley.nlp.util.Pair;
 
@@ -38,7 +37,8 @@ public class POSTaggerTester {
   static final boolean START_CAP = true;
   static final boolean STOP_CAP = true;
   static final int SUFFIX_LEN = 10;
-
+  static final int FREQUENCY_THRESHOLD = 11;
+  
   public boolean isCapitalised(String s){
   	return Character.isUpperCase(s.codePointAt(0));
   }
@@ -651,9 +651,8 @@ public class POSTaggerTester {
     Counter<String> capKnownSuffixes = new Counter<String>();
     
     Counter<String> knownWords = new Counter<String>();
-    Set<String> seenTagTrigrams = new HashSet<String>();
     
-    CounterMap<Boolean, String> infrequentTags = new CounterMap<Boolean, String>();
+    Counter<Pair<String, Boolean>> infrequentTags = new Counter<Pair<String, Boolean>>();
     Counter<Pair<String, Boolean>> t3 = new Counter<Pair<String, Boolean>>();
     Counter<Pair<String, Boolean>> t2 = new Counter<Pair<String, Boolean>>();
     Counter<String> t1t2 = new Counter<String>();
@@ -677,13 +676,11 @@ public class POSTaggerTester {
       	return Character.isUpperCase(s.codePointAt(0));
     }
     
-
     public Double smoothTransitionProbability(CounterMap<String, Pair<String, Boolean>> trigramCounter, Pair<String, Boolean> tagPair, Pair<String, Boolean> previousTagPair, String precedingTags, String bi_tag){
-    	Double p = 0.0;
     	Double p_t3 = t3.getCount(tagPair)/t3.totalCount();
     	Double p_t3t2 = t2t3.getCount(bi_tag)/t2.getCount(previousTagPair);
     	Double p_t1t2t3 = trigramCounter.getCount(precedingTags, tagPair);
-    	p = (lambda1 * p_t3) + (lambda2 * p_t3t2) + (lambda3 * p_t1t2t3);
+    	Double p = (lambda1 * p_t3) + (lambda2 * p_t3t2) + (lambda3 * p_t1t2t3);
     	return p;
     }
     
@@ -802,26 +799,42 @@ public class POSTaggerTester {
       return previousPreviousTag + " " + previousTag + " " + currentTag;
     }
     
-    public Double pHat(int l, String s, Pair<String, Boolean> t, double theta){
+    public Double pHat(int l, String s, Pair t, double theta, CounterMap<String, Pair<String, Boolean>> suffixToTagProbabilities){
     	if(l == 0){
     		// t3 is basically known tags
-    		return infrequentTags.getCounter(false).getCount(t.getFirst());
+    		return infrequentTags.getCount(t);
     	}
-    	return (suffixToTags.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHat(l-1, s, t, theta)) )/( 1 + theta);
+    	return (suffixToTagProbabilities.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHat(l-1, s, t, theta, suffixToTagProbabilities)) )/( 1 + theta);
+    }
+     
+    public CounterMap<String, Pair<String, Boolean>> smoothSuffixProbabilities(CounterMap<String, Pair<String, Boolean>> suffixProbability, Double theta){
+    	CounterMap<String, Pair<String, Boolean>> smoothSuffixProbability = new CounterMap<String, Pair<String, Boolean>>();
+    	for (String s: suffixProbability.keySet()){
+        	for (Pair<String, Boolean> t: suffixProbability.getCounter(s).keySet()){
+        		// different distribution to protect old calc
+        		smoothSuffixProbability.setCount(s, t, pHat(s.length(), s, t, theta, suffixProbability));
+        	}  
+          }
+    	return smoothSuffixProbability;
     }
     
-    public Double pHatCap(int l, String s, Pair<String, Boolean> t, double theta){
-    	if(l == 0){
-    		// t3 is basically known tags
-    		return infrequentTags.getCounter(true).getCount(t.getFirst());
-    	}
-    	return (capSuffixToTags.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHatCap(l-1, s, t, theta)) )/( 1 + theta);
+    /*
+     * Apply bayes rule to get tags to suffix probabilties from suffix, tag and suffix to tag probabilities 
+     */
+    public CounterMap<Pair<String, Boolean>, String> getTagsToSuffix(CounterMap<String, Pair<String, Boolean>> suffixTagProbabilities, Counter<String> suffixProbabilities, Counter<Pair<String, Boolean>> tagProbabilities){
+    	CounterMap<Pair<String, Boolean>, String> tagsToSuffixProbabilities = new CounterMap<Pair<String, Boolean>, String>();
+    	for(String s: suffixTagProbabilities.keySet()){
+      	  for(Pair<String, Boolean> t: suffixTagProbabilities.getCounter(s).keySet()){
+      		  Double p = (suffixTagProbabilities.getCounter(s).getCount(t) * suffixProbabilities.getCount(s))/tagProbabilities.getCount(t);
+      		tagsToSuffixProbabilities.incrementCount(t, s, p);
+      	  }
+        }
+    	return tagsToSuffixProbabilities;
     }
-    
 
     public void train(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
-      
-      // collect word-tag counts
+ 
+      // collect word-tag counts, preceding tags-tag counts
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
         String word = labeledLocalTrigramContext.getCurrentWord();
         String tag = labeledLocalTrigramContext.getCurrentTag();
@@ -830,16 +843,24 @@ public class POSTaggerTester {
         String previousPreviousTag = labeledLocalTrigramContext.getPreviousPreviousTag();
         Boolean previousCaps = labeledLocalTrigramContext.getPreviousCaps();
         Boolean previousPreviousCaps = labeledLocalTrigramContext.getPreviousPreviousCaps();
+ 
+        // Combine last 2 preceding tags and capitalisation information in a string 
         String precedingTags = makeBigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps);
+
+        // Combine current tag and last 2 preceding tags and capitalisation information in a string 
         String trigram = makeTrigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps, tag + caps);        
+
+        // Pair for the current tag and capitalisation of the word
         Pair<String, Boolean> tagPair = new Pair<String, Boolean>(tag,caps);
+        
+        // Pair for the previous tag and capitalisation of the previous word
         Pair<String, Boolean> previousTagPair = new Pair<String, Boolean>(previousTag, previousCaps);
         
+        // Increment all relevant counters
         tagsToTags.incrementCount(precedingTags, tagPair , 1.0);
         tagsToWords.incrementCount(tagPair, word, 1.0);
         wordToTags.incrementCount(word, tagPair, 1.0);
         previousTagToTags.incrementCount(previousTag + previousCaps, tagPair, 1.0);
-        seenTagTrigrams.add(trigram);
         
         knownWords.incrementCount(word, 1.0);
         
@@ -856,77 +877,62 @@ public class POSTaggerTester {
           String tag = labeledLocalTrigramContext.getCurrentTag();
           Boolean caps = labeledLocalTrigramContext.getCurrentCaps();
           Pair<String, Boolean> tagPair = new Pair<String, Boolean>(tag, caps);
-          if(knownWords.getCount(word) < 11){
+          
+          
+          // Calculate suffix probabilities only for words that have a frequency less than a certain threshold
+          if(knownWords.getCount(word) < FREQUENCY_THRESHOLD){
         	  
+        	  // Maintain separate probabilities for suffixes of non-capitalised words
         	  if(!isCapitalised(word)){
-		          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
+        		  // Update suffix probabilities for all suffix length from 1..SUFFIX_LEN 
+        		  for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
 		  			String suffix = getSuffix(word, i);
 		  			suffixToTags.incrementCount(suffix, tagPair, 1.0);
 		  			knownSuffixes.incrementCount(suffix, 1.0);
 		          }
         	  }
-        	  else{
-		          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
+        	  else
+        	  {
+        		  // Update suffix probabilities for all suffix length from 1..SUFFIX_LEN
+        		  for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
 		  			String suffix = getSuffix(word, i);
 		  			capSuffixToTags.incrementCount(suffix, tagPair, 1.0);
 		  			capKnownSuffixes.incrementCount(suffix, 1.0);
 		          }
         	  }
           }
-          infrequentTags.incrementCount( caps, tag, 1.0);
-//          }
+          // Counter tag pairs (tag, capitalisation)
+          infrequentTags.incrementCount(tagPair, 1.0);
        }
       
-      // TODO: add one unknown to every tag
+      // add one unknown to every tag
       for (Pair<String, Boolean> tag: tagsToWords.keySet()){
     	  tagsToWords.incrementCount(tag, UNKNOWN, 1.0);
       }
 
+      // ConditionalNormalize all CounterMap for turning them into conditional probabilities
       tagsToTags = Counters.conditionalNormalize(tagsToTags);
       tagsToWords = Counters.conditionalNormalize(tagsToWords);
       previousTagToTags = Counters.conditionalNormalize(previousTagToTags);
       suffixToTags = Counters.conditionalNormalize(suffixToTags);
       capSuffixToTags = Counters.conditionalNormalize(capSuffixToTags);
       
+      // Normalize the counters to convert them into probabilities
       knownSuffixes = Counters.normalize(knownSuffixes);
       capKnownSuffixes = Counters.normalize(capKnownSuffixes);
-
-      infrequentTags = Counters.conditionalNormalize(infrequentTags);
+      infrequentTags = Counters.normalize(infrequentTags);
       
-      Double theta = infrequentTags.getCounter(false).standardDeviation();
-      Double capTheta = infrequentTags.getCounter(true).standardDeviation();
+      // Theta value for suffix smoothing 
+      Double theta = infrequentTags.standardDeviation();
       System.out.printf("Theta : %f\n",theta);
-      System.out.printf("Theta : %f\n",capTheta);
-      // smoothed suffix probabilities
-      for (String s: suffixToTags.keySet()){
-    	for (Pair<String, Boolean> t: suffixToTags.getCounter(s).keySet()){
-    		// different distribution to protect old calc
-    		smoothedSuffixToTags.setCount(s, t, pHat(s.length(), s, t, theta));
-    	}  
-      }
       
-      for (String s: capSuffixToTags.keySet()){
-      	for (Pair<String, Boolean> t: capSuffixToTags.getCounter(s).keySet()){
-      		// different distribution to protect old calc
-      		capSmoothedSuffixToTags.setCount(s, t, pHatCap(s.length(), s, t, theta));
-      	}  
-      }
+      // smooth suffix probabilities
+      smoothedSuffixToTags = smoothSuffixProbabilities(suffixToTags, theta);
+      capSmoothedSuffixToTags = smoothSuffixProbabilities(capSuffixToTags, theta);
       
       // apply bayes rule to get tags to suffix
-      for(String s: smoothedSuffixToTags.keySet()){
-    	  for(Pair<String, Boolean> t: smoothedSuffixToTags.getCounter(s).keySet()){
-    		  Double p = (smoothedSuffixToTags.getCounter(s).getCount(t) * knownSuffixes.getCount(s))/infrequentTags.getCounter(false).getCount(t.getFirst());
-    		  tagsToSuffix.incrementCount(t, s, p);
-    	  }
-      }
-      
-   // apply bayes rule to get tags to suffix
-      for(String s: capSmoothedSuffixToTags.keySet()){
-    	  for(Pair<String, Boolean> t: capSmoothedSuffixToTags.getCounter(s).keySet()){
-    		  Double p = (capSmoothedSuffixToTags.getCounter(s).getCount(t) * capKnownSuffixes.getCount(s))/infrequentTags.getCounter(true).getCount(t.getFirst());
-    		  capTagsToSuffix.incrementCount(t, s, p);
-    	  }
-      }
+      tagsToSuffix = getTagsToSuffix(smoothedSuffixToTags, knownSuffixes, infrequentTags);
+      capTagsToSuffix = getTagsToSuffix(capSmoothedSuffixToTags, capKnownSuffixes, infrequentTags);
     }
 
     public void validate(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
@@ -975,11 +981,6 @@ public class POSTaggerTester {
         	  else if ((v1==v3) && (v1>v2)){
         		  lambda3 += (fif2f3/2);
         		  lambda1 += (fif2f3/2);
-        	  }
-        	  else if ((v1==v3) && (v1==v2)){
-        		  lambda1 += (fif2f3/3);
-        		  lambda2 += (fif2f3/3);
-        		  lambda3 += (fif2f3/3);
         	  }
 
           }

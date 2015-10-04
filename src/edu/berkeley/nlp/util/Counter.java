@@ -184,18 +184,29 @@ public class Counter <E> implements Serializable {
       setCount(key, getCount(key) * scaleFactor);
     }
   }
+
+  /**
+   * Return Sum of the distribution
+   */
+  public Double sum(){
+	  Double total = 0.0;
+	  for (E key: keySet()){
+		  total += (getCount(key));
+	  }
+	  return total;
+  }
   
   /**
    * Return Standard deviation of a probability distribution
    */
-  public double standardDeviation(){
-	  Double mean = 1.0/new Double(keySet().size());
+  public Double standardDeviation(){
+	  Double mean = sum()/new Double(keySet().size());
 	  Double std = 0.0;
 	  for (E key: keySet()){
 		  std += Math.pow((getCount(key) - mean),2);
 	  }
-	  System.out.println(mean);
-	  return std/(new Double(keySet().size()) - 1);
+	  System.out.printf("sum %f, mean:%f ", sum() ,mean);
+	  return std/(new Double(keySet().size()) );
   }
 
   /**
