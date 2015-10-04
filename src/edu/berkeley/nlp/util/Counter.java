@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.Map.Entry;
+import java.util.HashMap;
 
 /**
  * A map from objects to doubles.  Includes convenience methods for getting,
@@ -247,6 +248,21 @@ public class Counter <E> implements Serializable {
     }
     return pq;
   }
+  
+  public Map<E, Double> getTopK(int K){
+	  PriorityQueue<E> pq = asPriorityQueue();
+	  Map<E, Double> topElements = new HashMap<E, Double>();
+	  if(K > entries.size()){
+		  K = entries.size();
+	  }
+	  for(int i=0; i<K; ++i){
+		  double count = entries.get(pq.getFirst());
+		  E element = pq.removeFirst();
+		  topElements.put(element, count);
+	  }
+	  return topElements;
+  }
+  
   /**
    * Entry sets are an efficient way to iterate over
    * the key-value pairs in a map
