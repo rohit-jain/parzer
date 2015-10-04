@@ -580,15 +580,21 @@ public class POSTaggerTester {
     CounterMap<String, String> tagsToTags = new CounterMap<String, String>();
     CounterMap<String, String> previousTagToTags = new CounterMap<String, String>();
     CounterMap<String, String> tagsToWords = new CounterMap<String, String>();
+    
     CounterMap<String, String> suffixToTags = new CounterMap<String, String>();
+    CounterMap<String, String> capSuffixToTags = new CounterMap<String, String>();
+
     CounterMap<String, String> tagsToSuffix = new CounterMap<String, String>();
+    CounterMap<String, String> capTagsToSuffix = new CounterMap<String, String>();
+
     CounterMap<String, String> smoothedSuffixToTags = new CounterMap<String, String>();
+    CounterMap<String, String> capSmoothedSuffixToTags = new CounterMap<String, String>();
+    
     CounterMap<String, String> wordToTags = new CounterMap<String, String>();
     
-    Counter<String> unknownPrecedingTags = new Counter<String>();
-    Counter<String> unknownTagWords = new Counter<String>();
-
     Counter<String> knownSuffixes = new Counter<String>();
+    Counter<String> capKnownSuffixes = new Counter<String>();
+    
     Counter<String> knownWords = new Counter<String>();
     Set<String> seenTagTrigrams = new HashSet<String>();
     
@@ -628,9 +634,6 @@ public class POSTaggerTester {
         String word = localTrigramContext.getWords().get(position);
         String precedingTags = makeBigramString(localTrigramContext.getPreviousPreviousTag(), localTrigramContext.getPreviousTag());
         String previousTag = localTrigramContext.getPreviousTag();
-        String previousPreviousTag = localTrigramContext.getPreviousPreviousTag();
-
-        Counter<String> precedingTagCounter;
         Counter<String> logScoreCounter = new Counter<String>();
         
         
@@ -665,22 +668,44 @@ public class POSTaggerTester {
         }
         else{
         	// look at suffixes
-//        	System.out.println("unknown");
 
         	String bestSuffix = getSuffix(word, SUFFIX_LEN);
-        	for(int i=SUFFIX_LEN; i > 0; i--){
-        		String newSuffix = getSuffix(word, i);
-        		if (knownSuffixes.containsKey(newSuffix)){
-        			bestSuffix = newSuffix;
-        			break;
-        		}
-        	}
-    		// get candidate tags
-    		Set<String> candidateTags = smoothedSuffixToTags.getCounter(bestSuffix).keySet();
+
+    		
+        	// get candidate tags
+    		Set<String> candidateTags;
+    		CounterMap<String,String> tagsSuffix;
+    		
+    		if(!isCapitalised(word)){
+            	for(int i=SUFFIX_LEN; i > 0; i--){
+            		String newSuffix = getSuffix(word, i);
+            		if (knownSuffixes.containsKey(newSuffix)){
+            			bestSuffix = newSuffix;
+            			break;
+            		}
+            	}
+
+    			candidateTags = smoothedSuffixToTags.getCounter(bestSuffix).keySet();
+    			tagsSuffix = tagsToSuffix;
+    		}
+    		else{
+            	for(int i=SUFFIX_LEN; i > 0; i--){
+            		String newSuffix = getSuffix(word, i);
+            		if (capKnownSuffixes.containsKey(newSuffix)){
+            			bestSuffix = newSuffix;
+            			break;
+            		}
+            	}
+
+    			candidateTags = capSmoothedSuffixToTags.getCounter(bestSuffix).keySet();
+    			tagsSuffix = capTagsToSuffix;
+    		}
+    		
+    		
     		// get probability for each candidate tag
     		for (String candidateTag : candidateTags) {
           	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTag, previousTag, precedingTags, makeBigramString(previousTag, candidateTag));
-          	  double emission_probability = tagsToSuffix.getCount(candidateTag, bestSuffix);// * tagsToWords.getCount(candidateTag, UNKNOWN);
+          	  double emission_probability = tagsSuffix.getCount(candidateTag, bestSuffix);// * tagsToWords.getCount(candidateTag, UNKNOWN);
 
           	  if ((transition_probability == 0) || (emission_probability == 0)){
           		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
@@ -697,18 +722,7 @@ public class POSTaggerTester {
         return logScoreCounter;
       }
 
-    
-    private Set<String> allowedFollowingTags(Set<String> tags, String previousPreviousTag, String previousTag) {
-        Set<String> allowedTags = new HashSet<String>();
-        for (String tag : tags) {
-          String trigramString = makeTrigramString(previousPreviousTag, previousTag, tag);
-          if (seenTagTrigrams.contains((trigramString))) {
-            allowedTags.add(tag);
-          }
-        }
-        return allowedTags;
-    }
-    
+        
     private String makeBigramString(String a, String b){
         return a + " " + b;
     }
@@ -724,11 +738,22 @@ public class POSTaggerTester {
     	}
     	return (suffixToTags.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHat(l-1, s, t, theta)) )/( 1 + theta);
     }
+    
+    public Double pHatCap(int l, String s, String t, double theta){
+    	if(l == 0){
+    		// t3 is basically known tags
+    		return infrequentTags.getCount(t);
+    	}
+    	return (capSuffixToTags.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHatCap(l-1, s, t, theta)) )/( 1 + theta);
+    }
+    
+    public boolean isCapitalised(String s){
+    	return Character.isUpperCase(s.codePointAt(0));
+    }
 
     public void train(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
       Double theta = 0.0;
-      int maxLen = 0;
-
+ 
       // collect word-tag counts
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
         String word = labeledLocalTrigramContext.getCurrentWord();
@@ -736,18 +761,7 @@ public class POSTaggerTester {
         String previousTag = labeledLocalTrigramContext.getPreviousTag();
         String previousPreviousTag = labeledLocalTrigramContext.getPreviousPreviousTag();
         String precedingTags = makeBigramString(previousTag, previousPreviousTag);
-        String trigram = makeTrigramString(labeledLocalTrigramContext.getPreviousPreviousTag(), labeledLocalTrigramContext.getPreviousTag(), labeledLocalTrigramContext.getCurrentTag());
-        if(word.length()>maxLen){
-        	maxLen = word.length();
-        }
-        
-        if (!tagsToTags.keySet().contains(precedingTags))
-        {
-        	unknownPrecedingTags.incrementCount(tag, 1.0);
-        }
-        if (!tagsToWords.keySet().contains(tag)){
-        	unknownTagWords.incrementCount(word, 1.0);
-        }
+        String trigram = makeTrigramString(labeledLocalTrigramContext.getPreviousPreviousTag(), labeledLocalTrigramContext.getPreviousTag(), labeledLocalTrigramContext.getCurrentTag());        
         
 		tagsToTags.incrementCount(precedingTags, tag, 1.0);
         tagsToWords.incrementCount(tag, word, 1.0);
@@ -765,20 +779,29 @@ public class POSTaggerTester {
         
       }
       
-      System.out.println(maxLen);
-      
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
           String word = labeledLocalTrigramContext.getCurrentWord();
           String tag = labeledLocalTrigramContext.getCurrentTag();
-          if(knownWords.getCount(word) < 20){
-	          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
-	  			String suffix = getSuffix(word, i);
-	  			suffixToTags.incrementCount(suffix, tag, 1.0);
-	  			knownSuffixes.incrementCount(suffix, 1.0);
-	          }
-          }
+          if(knownWords.getCount(word) < 100){
+        	  
+        	  if(!isCapitalised(word)){
+		          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
+		  			String suffix = getSuffix(word, i);
+		  			suffixToTags.incrementCount(suffix, tag, 1.0);
+		  			knownSuffixes.incrementCount(suffix, 1.0);
+		          }
+        	  }
+        	  else{
+		          for( int i=1; i <= Math.min(SUFFIX_LEN, word.length()); i++){
+		  			String suffix = getSuffix(word, i);
+		  			capSuffixToTags.incrementCount(suffix, tag, 1.0);
+		  			capKnownSuffixes.incrementCount(suffix, 1.0);
+		          }
+        	  }
+//          }
           infrequentTags.incrementCount(tag, 1.0);
-      }
+          }
+       }
       
       // TODO: add one unknown to every tag
       for (String tag: tagsToWords.keySet()){
@@ -789,14 +812,15 @@ public class POSTaggerTester {
       tagsToWords = Counters.conditionalNormalize(tagsToWords);
       previousTagToTags = Counters.conditionalNormalize(previousTagToTags);
       suffixToTags = Counters.conditionalNormalize(suffixToTags);
+      capSuffixToTags = Counters.conditionalNormalize(capSuffixToTags);
       
-      unknownTagWords = Counters.normalize(unknownTagWords);
-      unknownPrecedingTags = Counters.normalize(unknownPrecedingTags);
       knownSuffixes = Counters.normalize(knownSuffixes);
+      capKnownSuffixes = Counters.normalize(capKnownSuffixes);
+
       infrequentTags = Counters.normalize(infrequentTags);
       
       theta = infrequentTags.standardDeviation();
-      System.out.println(theta);
+      System.out.printf("Theta : %f\n",theta);
       
       // smoothed suffix probabilities
       for (String s: suffixToTags.keySet()){
@@ -806,11 +830,26 @@ public class POSTaggerTester {
     	}  
       }
       
+      for (String s: capSuffixToTags.keySet()){
+      	for (String t: capSuffixToTags.getCounter(s).keySet()){
+      		// different distribution to protect old calc
+      		capSmoothedSuffixToTags.setCount(s, t, pHatCap(s.length(), s, t, theta));
+      	}  
+      }
+      
       // apply bayes rule to get tags to suffix
       for(String s: smoothedSuffixToTags.keySet()){
     	  for(String t: smoothedSuffixToTags.getCounter(s).keySet()){
     		  Double p = (smoothedSuffixToTags.getCounter(s).getCount(t) * knownSuffixes.getCount(s))/infrequentTags.getCount(t);
     		  tagsToSuffix.incrementCount(t, s, p);
+    	  }
+      }
+      
+   // apply bayes rule to get tags to suffix
+      for(String s: capSmoothedSuffixToTags.keySet()){
+    	  for(String t: capSmoothedSuffixToTags.getCounter(s).keySet()){
+    		  Double p = (capSmoothedSuffixToTags.getCounter(s).getCount(t) * capKnownSuffixes.getCount(s))/infrequentTags.getCount(t);
+    		  capTagsToSuffix.incrementCount(t, s, p);
     	  }
       }
     }
@@ -1076,19 +1115,22 @@ public class POSTaggerTester {
     List<TaggedSentence> trainTaggedSentences = readTaggedSentences(basePath, 200, 2199);
     List<TaggedSentence> trainTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 1, 380);
 
+    List<TaggedSentence> devTaggedSentences = readTaggedSentences(basePath, 2200, 2210);
+
+    
 //    trainTaggedSentences.addAll(trainTaggedSentencesTwitter);
     Set<String> trainingVocabulary = extractVocabulary(trainTaggedSentences);
     
     System.out.println("done.");
     System.out.print("Loading validation sentences...");
-    List<TaggedSentence> validationTaggedSentences = readTaggedSentences(basePath, 2200, 2299);
+    List<TaggedSentence> validationTaggedSentences = readTaggedSentences(basePath, 2210, 2299);
     List<TaggedSentence> validationTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 381, 400);
 
 //    validationTaggedSentences.addAll(validationTaggedSentencesTwitter);
     
     System.out.println("done.");
     System.out.print("Loading test sentences...");
-    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2399);
+    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2310);
     List<TaggedSentence> testTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 401, 780);
 
     System.out.println("done.");
@@ -1102,7 +1144,7 @@ public class POSTaggerTester {
     // Train tagger
     POSTagger posTagger = new POSTagger(localTrigramScorer, trellisDecoder);
     posTagger.train(trainTaggedSentences);
-    posTagger.validate(validationTaggedSentences);
+    posTagger.validate(devTaggedSentences);
     System.out.println("done validating");
     // Evaluation set, use either test of validation (for dev)
     final List<TaggedSentence> evalTaggedSentences;
