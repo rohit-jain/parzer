@@ -31,8 +31,8 @@ public class POSTaggerTester {
 
   static final String START_WORD = "START";
   static final String STOP_WORD = "STOP";
-  static final String START_TAG = "<S>";
-  static final String STOP_TAG = "</S>";
+  static final String START_TAG = "<START>";
+  static final String STOP_TAG = "</STOP>";
   static final String UNKNOWN = "<UNK>";
   static final boolean START_CAP = true;
   static final boolean STOP_CAP = true;
@@ -343,9 +343,11 @@ public class POSTaggerTester {
 	        			if (trellis.getForwardTransitions(s_i).keySet().contains(s)){
 		        			double pq = trellis.getForwardTransitions(s_i).getCount(s);
 			        		double p = oldPie + pq ;
+			        		// set the tranisition values by summing the pie value, log transition and log emission
 				        	viterbiTransitions.setCount(s_i, p);
 		        		}
 	        			else{
+	        				// Set the zero pie state to a very small value so that the whole sequence doesn't go to zero
 	        				viterbiTransitions.setCount(s_i, Double.NEGATIVE_INFINITY);
 	        			}
 	        		}
@@ -353,10 +355,13 @@ public class POSTaggerTester {
         				viterbiTransitions.setCount(s_i, Double.NEGATIVE_INFINITY);
         			}
 	        	}
+	        	// Pick the state that maximizes the sum of pie, log transition and log emission
 	        	S maxState = viterbiTransitions.argMax();
+	        	// set the backpointer of current state to the state that maximises the sum so far for this state
 	        	stateBackPointers.put(s, maxState);
 	        	pie.setCount(position, s, viterbiTransitions.getCount(maxState));
 	        }
+	        // maintain a map of all backpointers for each position
 	        backPointers.add(position, stateBackPointers);
 	        position += 1;
 	      }
@@ -365,6 +370,7 @@ public class POSTaggerTester {
 	      states.add(lastBestState);
 	      position = sentenceLength+2;
 	      
+	      // We start traversing the backpointer list in reverse order to get the path of the states that maximized the sum of the entire path
 	      while(position > 0 ){
 	    	  
 	    	  Map<S,S> lastStateBackpointers = backPointers.get(position);
@@ -379,6 +385,7 @@ public class POSTaggerTester {
 	      List<S> tagSeq = new ArrayList<S>();
 	      position = sentenceLength+2;
 	      
+	      // Reverse the list to get the correct sequence of states
 	      while(states.size()>0){
 	    	  tagSeq.add(states.remove(position));
 	    	  position -= 1;
@@ -614,7 +621,8 @@ public class POSTaggerTester {
   static class HMMTagScorer implements LocalTrigramScorer {
 
     boolean restrictTrigrams; // if true, assign log score of Double.NEGATIVE_INFINITY to illegal tag trigrams.
-
+    
+    // Counter maps to store all the required probabilities
     CounterMap<String, Pair<String, Boolean>> tagsToTags = new CounterMap<String, Pair<String, Boolean>>();
     CounterMap<String, Pair<String, Boolean>> previousTagToTags = new CounterMap<String, Pair<String, Boolean>>();
     CounterMap<Pair<String, Boolean>, String> tagsToWords = new CounterMap<Pair<String, Boolean>, String>();
@@ -630,11 +638,13 @@ public class POSTaggerTester {
     
     CounterMap<String, Pair<String, Boolean>> wordToTags = new CounterMap<String, Pair<String, Boolean>>();
     
+    // separate counters for suffix probabilities of capitalized and non-capitalized words 
     Counter<String> knownSuffixes = new Counter<String>();
     Counter<String> capKnownSuffixes = new Counter<String>();
     
     Counter<String> knownWords = new Counter<String>();
     
+    // Counters for unigram, bigram, trigram probabilties for linear interpolation
     Counter<Pair<String, Boolean>> infrequentTags = new Counter<Pair<String, Boolean>>();
     Counter<Pair<String, Boolean>> t3 = new Counter<Pair<String, Boolean>>();
     Counter<Pair<String, Boolean>> t2 = new Counter<Pair<String, Boolean>>();
@@ -642,6 +652,7 @@ public class POSTaggerTester {
     Counter<String> t2t3 = new Counter<String>();
     Counter<String> t1t2t3 = new Counter<String>();
 
+    // linear interpolation parameters
     Double lambda1 = 0.0;
     Double lambda2 = 0.0;
     Double lambda3 = 0.0;
@@ -655,10 +666,17 @@ public class POSTaggerTester {
       return 2;
     }
     
+    /*
+     * Returns true if the first character of string is capitalised
+     */
     public boolean isCapitalised(String s){
       	return Character.isUpperCase(s.codePointAt(0));
     }
     
+    /*
+     * Use the lambda values computed using development with
+     * unigram, bigram, trigram probabilties to return the smoothed transition probabilties
+     */
     public Double smoothTransitionProbability(CounterMap<String, Pair<String, Boolean>> trigramCounter, Pair<String, Boolean> tagPair, Pair<String, Boolean> previousTagPair, String precedingTags, String bi_tag){
     	Double p_t3 = t3.getCount(tagPair)/t3.totalCount();
     	Double p_t3t2 = t2t3.getCount(bi_tag)/t2.getCount(previousTagPair);
@@ -666,7 +684,9 @@ public class POSTaggerTester {
     	Double p = (lambda1 * p_t3) + (lambda2 * p_t3t2) + (lambda3 * p_t1t2t3);
     	return p;
     }
-    
+    /*
+     * Method to compute the log score probabilities using the transition and emission probabilities 
+     */
     public Counter<String> getLogScoreCounter(LocalTrigramContext localTrigramContext) {
         int position = localTrigramContext.getPosition();
         String word = localTrigramContext.getWords().get(position);
@@ -678,12 +698,15 @@ public class POSTaggerTester {
         Pair<String, Boolean> previousTagPair = new Pair<String, Boolean>(previousTag, previousCaps);
         Counter<String> logScoreCounter = new Counter<String>();
         
-        
+        // If the word is STOP_WORD, it means the end of sentence
+        // The log score is just the transition probability in this case and we don;t use emission probability
         if (word == STOP_WORD){
           Pair<String, Boolean> tagPair = new Pair<String, Boolean>(STOP_TAG, true);
           String previousCurrent = makeBigramString(previousTag + previousCaps, STOP_TAG + true);          
           
     	  double transition_probability = smoothTransitionProbability(tagsToTags, tagPair, previousTagPair, precedingTags, previousCurrent);
+    	  // If transition probability zerp assign negative infinity to avoid errors and give the state a very small probability
+    	  // This protects the sequence probability from going to zero 
     	  if (transition_probability == 0){
     		  transition_probability  = Double.NEGATIVE_INFINITY;
     	  }
@@ -694,15 +717,21 @@ public class POSTaggerTester {
     	  return logScoreCounter;
         }
         
+        // If the word is known
         if (knownWords.keySet().contains(word)){
+        	// Generate candidate tags based on the tags that were seen with the word in training corpus
         	Set<Pair<String, Boolean>> candidateTags = wordToTags.getCounter(word).keySet();
         	for (Pair<String, Boolean> candidateTagPair : candidateTags) {
               String previousCurrent = makeBigramString(previousTag + previousCaps, candidateTagPair.getFirst() + candidateTagPair.getSecond());
         	  String candidateTag = candidateTagPair.getFirst();
         	  
+        	  // transition probability calculated based on the trigram probability of tags.
         	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTagPair, previousTagPair, precedingTags, previousCurrent);
+        	  // emission probabilty calculated based on the occurances of given word with the candidate tag
         	  double emission_probability = tagsToWords.getCount(candidateTagPair,word);
         	  
+        	  // If transition/emission probability zero assign negative infinity to avoid errors and give the state a very small probability
+        	  // This protects the sequence probability from going to zero 
           	  if ((transition_probability == 0) || (emission_probability == 0)){
           		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
         	  }
@@ -714,6 +743,7 @@ public class POSTaggerTester {
         	  }
           	}
         }
+        // if the word is not known use suffixes
         else{
         	// max length suffix
         	String bestSuffix = getSuffix(word, SUFFIX_LEN);
@@ -722,6 +752,7 @@ public class POSTaggerTester {
     		Set<Pair<String,Boolean>> candidateTags;
     		CounterMap<Pair<String,Boolean>,String> tagsSuffix;
     		
+    		// If the word is not capitalised use the normal word suffix probability to generate the candidate tags
     		if(!isCapitalised(word)){
     			// max length suffix that exists with frequency > 0
             	for(int i=SUFFIX_LEN; i > 0; i--){
@@ -734,6 +765,7 @@ public class POSTaggerTester {
     			candidateTags = smoothedSuffixToTags.getCounter(bestSuffix).keySet();
     			tagsSuffix = tagsToSuffix;
     		}
+    		// If the word is not capitalised use the capitalised word suffix probability to generate the candidate tags
     		else{
             	for(int i=SUFFIX_LEN; i > 0; i--){
             		String newSuffix = getSuffix(word, i);
@@ -752,10 +784,13 @@ public class POSTaggerTester {
     		for (Pair<String,Boolean> candidateTagPair : candidateTags) {
               String previousCurrent = makeBigramString(previousTag + previousCaps, candidateTagPair.getFirst() + candidateTagPair.getSecond());
           	  String candidateTag = candidateTagPair.getFirst();
-
+          	  
+          	  // transition and emission probability computed ussed suffix-tag probabilities instead of word-tag probabilities 
           	  double transition_probability = smoothTransitionProbability(tagsToTags, candidateTagPair, previousTagPair, precedingTags, previousCurrent);
           	  double emission_probability = tagsSuffix.getCount(candidateTagPair, bestSuffix);// * tagsToWords.getCount(candidateTag, UNKNOWN);
-
+          	  
+          	  // If transition/emission probability zero assign negative infinity to avoid errors and give the state a very small probability
+        	  // This protects the sequence probability from going to zero 
           	  if ((transition_probability == 0) || (emission_probability == 0)){
           		  logScoreCounter.setCount(candidateTag, Double.NEGATIVE_INFINITY);
         	  }
@@ -781,18 +816,20 @@ public class POSTaggerTester {
     }
     
     /*
-     * 
+     * Recursive function that uses theta parameter to account for the context loss
+     * as we go to smaller suffixes
      */
     public Double pHat(int l, String s, Pair t, double theta, CounterMap<String, Pair<String, Boolean>> suffixToTagProbabilities){
     	if(l == 0){
-    		// t3 is basically known tags
+    		// infrequent tags are basically known tags in the training data
     		return infrequentTags.getCount(t);
     	}
     	return (suffixToTagProbabilities.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHat(l-1, s, t, theta, suffixToTagProbabilities)) )/( 1 + theta);
     }
     
     /*
-     * Smooth Suffix Probabilities 
+     * Smooth Suffix Probabilities
+     * Intakes all the suffix probabilties and uses the recursive method to smooth all of them 
      */
     public CounterMap<String, Pair<String, Boolean>> smoothSuffixProbabilities(CounterMap<String, Pair<String, Boolean>> suffixProbability, Double theta){
     	CounterMap<String, Pair<String, Boolean>> smoothSuffixProbability = new CounterMap<String, Pair<String, Boolean>>();
@@ -819,6 +856,9 @@ public class POSTaggerTester {
     	return tagsToSuffixProbabilities;
     }
 
+    /*
+     * Train the HMM trigram model using the labeled trigram contexts
+     */
     public void train(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
  
       // collect word-tag counts, preceding tags-tag counts
@@ -923,6 +963,8 @@ public class POSTaggerTester {
 
     public void validate(List<LabeledLocalTrigramContext> labeledLocalTrigramContexts) {
       // tune using linear interpolation
+      // for each sentence get the unigram, bigram and trigram probabilities to calculate the lambda parameters 
+      // for smoothing
       for (LabeledLocalTrigramContext labeledLocalTrigramContext : labeledLocalTrigramContexts) {
           String tag = labeledLocalTrigramContext.getCurrentTag();
           Boolean caps = labeledLocalTrigramContext.getCurrentCaps();
@@ -1000,6 +1042,13 @@ public class POSTaggerTester {
     return taggedSentences;
   }
   
+  /*
+   * Method to read twitter sentences from the file on the directory path provided
+   * Inputs:
+   * path - path of the input file
+   * low - start sentence number
+   * high - last sentence number
+   */
   private static List<TaggedSentence> readTaggedSentencesTwitter(String path, int low, int high) {
 	    List<TaggedSentence> taggedSentences = new ArrayList<TaggedSentence>();
 	    int  lineNumber = 0;
@@ -1043,6 +1092,7 @@ public class POSTaggerTester {
       List<String> words = taggedSentence.getWords();
       List<String> goldTags = taggedSentence.getTags();
       List<String> guessedTags = posTagger.tag(words);
+      boolean printMisclassification = false;
       for (int position = 0; position < words.size() - 1; position++) {
         String word = words.get(position);
         String goldTag = goldTags.get(position);
@@ -1051,6 +1101,9 @@ public class POSTaggerTester {
           numTagsCorrect += 1.0;
         }
         else{
+//        	if((guessedTag == "NN") && (goldTag == "NNP")){
+        		printMisclassification = true;
+//        	}
         	errors.incrementCount(goldTag, guessedTag, 1.0);
         	goldError.incrementCount(goldTag, 1.0);
         }
@@ -1061,6 +1114,12 @@ public class POSTaggerTester {
           numUnknownWords += 1.0;
         }
       }
+//		Code to print out misclassifications to do a better analysis
+//      if(printMisclassification && (words.size()>2) && (words.size()<=6)){
+//    	  System.out.println(words);
+//    	  System.out.println(guessedTags);
+//    	  System.out.println(goldTags);
+//      }
       double scoreOfGoldTagging = posTagger.scoreTagging(taggedSentence);
       double scoreOfGuessedTagging = posTagger.scoreTagging(new TaggedSentence(words, guessedTags));
       if (scoreOfGoldTagging > scoreOfGuessedTagging) {
@@ -1080,15 +1139,15 @@ public class POSTaggerTester {
     
     System.out.print("Tags ");
     for (String v: tags){
-    	System.out.print(v + " , ");
+    	System.out.print(v + "\t");
     }
     
     System.out.print("\n");
     
     for (String k: topErrors.keySet()){
-    	System.out.print(k + " : ");
+    	System.out.print(k + "\t");
     	for(String v: tags){
-    		System.out.print( errors.getCount(k,v) + " , " );
+    		System.out.print( errors.getCount(k,v) + "\t" );
     	}
     	System.out.print("\n");
     }
