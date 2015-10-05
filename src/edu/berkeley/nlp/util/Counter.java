@@ -205,7 +205,7 @@ public class Counter <E> implements Serializable {
 	  for (E key: keySet()){
 		  std += Math.pow((getCount(key) - mean),2);
 	  }
-	  System.out.printf("sum %f, mean:%f ", sum() ,mean);
+//	  System.out.printf("sum %f, mean:%f ", sum() ,mean);
 	  return std/(new Double(keySet().size()) );
   }
 

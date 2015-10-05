@@ -36,7 +36,7 @@ public class POSTaggerTester {
   static final String UNKNOWN = "<UNK>";
   static final boolean START_CAP = true;
   static final boolean STOP_CAP = true;
-  static final int SUFFIX_LEN = 10;
+  static final int SUFFIX_LEN = 5;
   static final int FREQUENCY_THRESHOLD = 11;
   
   public boolean isCapitalised(String s){
@@ -289,8 +289,9 @@ public class POSTaggerTester {
     List<S> getBestPath(Trellis<S> trellis, int sentenceLength);
   }
   
-  
-  
+  /*
+   * Viterbi Decoder
+   */
   static class ViterbiDecoder <S> implements TrellisDecoder<S> {
 	    public List<S> getBestPath(Trellis<S> trellis, int sentenceLength) {
 	      
@@ -307,12 +308,15 @@ public class POSTaggerTester {
 	      int position = 0;
 	      // Set the backpointer for start state to null
 	      backPointers.add(position, null);
+	      // set the start state (log probability) to 0 for position 0 
+	      pie.setCount(position, currentState, 0.0);
 	      
 	      // Add current state to all states
 	      allStates.add(currentState);
 	      // Add stop state to all states
 	      allStates.add(trellis.getEndState());
 	      
+	      // Populate all the possible states in trellis
 	      position += 1; 
 	      while( position < sentenceLength+3 ){
 	    	  Set<S> allTempStates = new HashSet<S>();
@@ -323,23 +327,21 @@ public class POSTaggerTester {
 	    	  position += 1;
 	      }
 	      
-	      position = 0;
-	      // set the start state probability to 1 for position 0
-	      pie.setCount(position, currentState, 0.0);
-	      
-	      position += 1;
-	      
+	      position = 1;
+	      // For all positions iterate over all states
 	      while( position < sentenceLength+3 ){
 	        Map<S,S> stateBackPointers = new HashMap<S,S>();
+	        // Iterate over all states
 	        for(S s: allStates){
 	        	Counter<S> viterbiTransitions = new Counter<S>();
-	  	      
+	        	// Iterate over all states for the previous positions
 	        	for(S s_i: allStates){
+	        		
 	        		if (pie.getCounter(position - 1).keySet().contains(s_i)){
+	        			// Get the minimum pie value for the state at previous position
 	        			double oldPie = pie.getMinCount(position-1 , s_i);
-	        			double pq;
 	        			if (trellis.getForwardTransitions(s_i).keySet().contains(s)){
-		        			pq = trellis.getForwardTransitions(s_i).getCount(s);
+		        			double pq = trellis.getForwardTransitions(s_i).getCount(s);
 			        		double p = oldPie + pq ;
 				        	viterbiTransitions.setCount(s_i, p);
 		        		}
@@ -909,7 +911,6 @@ public class POSTaggerTester {
       
       // Theta value for suffix smoothing 
       Double theta = infrequentTags.standardDeviation();
-      System.out.printf("Theta : %f\n",theta);
       
       // smooth suffix probabilities
       smoothedSuffixToTags = smoothSuffixProbabilities(suffixToTags, theta);
@@ -978,9 +979,6 @@ public class POSTaggerTester {
       lambda1 = lambda1/sum;
       lambda2 = lambda2/sum;
       lambda3 = lambda3/sum;
-      System.out.println(lambda1);
-      System.out.println(lambda2);
-      System.out.println(lambda3);
     }
 
     public HMMTagScorer(boolean restrictTrigrams) {
@@ -1153,72 +1151,161 @@ public class POSTaggerTester {
     String tweetPath = ".";
     boolean verbose = false;
     boolean useValidation = true;
-
+    boolean trainTwitter = true;
+    boolean trainPennTreeBank = true;
+    boolean testTwitter = true;
+    boolean testPennTreeBank = true;
+    int devSentencesStart = 2200;
+    int devSentencesEnd = 2209;
+    int validationSentencesStart = devSentencesEnd +1;
+    int validationSentencesEnd = 2299;
+    int testSentencesStart = 2300;
+    int testSentencesEnd = 2399;
+    
+    
     // Update defaults using command line specifications
 
     // The path to the assignment data
     if (argMap.containsKey("-path")) {
       basePath = argMap.get("-path");
+      System.out.println("Using base path: " + basePath);
     }
-    System.out.println("Using base path: " + basePath);
 
-    // The path to the assignment data
+    // The path to the twitter data
     if (argMap.containsKey("-tweets")) {
       tweetPath = argMap.get("-tweets");
+      System.out.println("Using tweets base path: " + tweetPath);
     }
-    System.out.println("Using tweets base path: " + tweetPath);
+
+    // Which training data to use
+    if (argMap.containsKey("-train")) {
+      String trainString = argMap.get("-train");
+      // if 0 train only on penn tree bank
+      if (trainString.equalsIgnoreCase("0")){
+        trainTwitter = false;
+        System.out.println("Train only on Penn Tree Bank");
+      }
+      // if 1 train only on twitter
+      else if (trainString.equalsIgnoreCase("1")){
+        trainPennTreeBank = false;
+        System.out.println("Train only on Twitter");
+      }
+      else{
+    	  System.out.println("Train only on Both");
+      }
+    }
 
     
     // Whether to use the validation or test set
     if (argMap.containsKey("-test")) {
       String testString = argMap.get("-test");
-      if (testString.equalsIgnoreCase("test"))
-        useValidation = false;
+      // test only on penn tree bank validation set
+      if (testString.equalsIgnoreCase("0")){
+          testTwitter = false;
+          testPennTreeBank = false;
+          System.out.println("Test only on validation penn tree bank");
+      }
+      // test only on twitter
+      else if(testString.equalsIgnoreCase("1")){
+          testPennTreeBank = false;
+		  useValidation = false;
+   		  // use all validation sentences for tuning the model
+		  devSentencesEnd = 2299;
+          System.out.println("Test only on twitter");
+      }
+      // test only on penn tree bank test set
+      else if(testString.equalsIgnoreCase("2")){
+          testTwitter = false;
+		  useValidation = false;
+   		  // use all validation sentences for tuning the model
+		  devSentencesEnd = 2299;
+          System.out.println("Test only on penn tree test(held out set)");
+      }
+      // test on twitter + penn tree bank test set
+      else if(testString.equalsIgnoreCase("3")){
+		  useValidation = false;
+   		  // use all validation sentences for tuning the model
+		  devSentencesEnd = 2299;
+          System.out.println("Test only on twitter + penn tree test(held out set)");
+      }
+      // test on twitter + penn tree bank validation set
+      else if(testString.equalsIgnoreCase("4")){
+    	  testPennTreeBank = false;
+    	  System.out.println("Test only on twitter + penn tree validation");
+      }      
     }
-    System.out.println("Testing on: " + (useValidation ? "validation" : "test"));
-
+    
     // Whether or not to print the individual errors.
     if (argMap.containsKey("-verbose")) {
       verbose = true;
     }
 
-    // Read in data
-    System.out.print("Loading training sentences...");
-    List<TaggedSentence> trainTaggedSentences = readTaggedSentences(basePath, 200, 2199);
-    List<TaggedSentence> trainTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 1, 380);
-
-    List<TaggedSentence> devTaggedSentences = readTaggedSentences(basePath, 2200, 2299);
-
+    List<TaggedSentence> trainTaggedSentences = new ArrayList<TaggedSentence>();
+    List<TaggedSentence> devTaggedSentences = new ArrayList<TaggedSentence>();
+    List<TaggedSentence> validationTaggedSentences = new ArrayList<TaggedSentence>();
+    List<TaggedSentence> testTaggedSentences = new ArrayList<TaggedSentence>();
+    Set<String> trainingVocabulary = new HashSet<String>();
     
-//    trainTaggedSentences.addAll(trainTaggedSentencesTwitter);
-    Set<String> trainingVocabulary = extractVocabulary(trainTaggedSentences);
+    if (trainPennTreeBank){
+	    // Read in data
+	    System.out.print("Loading training sentences...");
+	    trainTaggedSentences = readTaggedSentences(basePath, 200, 2199);
+	    System.out.println("done.");
+	
+	    System.out.print("Loading development sentences...");
+	    devTaggedSentences = readTaggedSentences(basePath, devSentencesStart, devSentencesEnd);
+	    System.out.println("done.");
+    }
     
-    System.out.println("done.");
-    System.out.print("Loading validation sentences...");
-    List<TaggedSentence> validationTaggedSentences = readTaggedSentences(basePath, 2210, 2299);
-    List<TaggedSentence> validationTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 381, 400);
-
-//    validationTaggedSentences.addAll(validationTaggedSentencesTwitter);
+    if(useValidation){
+	    System.out.print("Loading validation sentences for dev testing...");
+	    validationTaggedSentences = readTaggedSentences(basePath, validationSentencesStart, validationSentencesEnd);
+	    System.out.println("done.");
+    }
     
-    System.out.println("done.");
-    System.out.print("Loading test sentences...");
-    List<TaggedSentence> testTaggedSentences = readTaggedSentences(basePath, 2300, 2399);
-    List<TaggedSentence> testTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 401, 780);
+    if(testPennTreeBank){
+	    System.out.print("Loading test sentences...");
+	    testTaggedSentences = readTaggedSentences(basePath, testSentencesStart, testSentencesEnd);
+	    System.out.println("done.");
+    }
 
-    System.out.println("done.");
+    if(trainTwitter){
+    	System.out.print("Loading twitter training sentences...");
+	    List<TaggedSentence> trainTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 1, 380);
+	    trainTaggedSentences.addAll(trainTaggedSentencesTwitter);
+	    System.out.println("done.");
+	    
+	    System.out.print("Loading twitter development sentences...");
+	    List<TaggedSentence> validationTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 381, 400);
+	    devTaggedSentences.addAll(validationTaggedSentencesTwitter);
+	    System.out.println("done.");
+    }
+    
+    if(testTwitter){
+    	System.out.print("Loading twitter test sentences...");
+    	List<TaggedSentence> testTaggedSentencesTwitter = readTaggedSentencesTwitter(tweetPath, 401, 780);
+	    if(useValidation)
+	    	validationTaggedSentences.addAll(testTaggedSentencesTwitter);
+	    else
+	    	testTaggedSentences.addAll(testTaggedSentencesTwitter);	    	
+	    System.out.println("done.");
+    }
+    
+    // extract training vocabulary
+    trainingVocabulary = extractVocabulary(trainTaggedSentences);
 
     // Construct tagger components
-    // TODO : improve on the MostFrequentTagScorer
     LocalTrigramScorer localTrigramScorer = new HMMTagScorer(false);
-    // TODO : improve on the GreedyDecoder
     TrellisDecoder<State> trellisDecoder = new ViterbiDecoder<State>();
 
     // Train tagger
     POSTagger posTagger = new POSTagger(localTrigramScorer, trellisDecoder);
     posTagger.train(trainTaggedSentences);
+    // tune using dev sentences
     posTagger.validate(devTaggedSentences);
-    System.out.println("done validating");
-    // Evaluation set, use either test of validation (for dev)
+    System.out.println("done tuning");
+    
+    // Evaluation set, use either test or validation (for dev)
     final List<TaggedSentence> evalTaggedSentences;
     if (useValidation) {
     	evalTaggedSentences = validationTaggedSentences;
