@@ -293,19 +293,25 @@ public class POSTaggerTester {
   
   static class ViterbiDecoder <S> implements TrellisDecoder<S> {
 	    public List<S> getBestPath(Trellis<S> trellis, int sentenceLength) {
+	      
 	      List<S> states = new ArrayList<S>();
+	      // All states that exist in trellis
 	      Set<S> allStates = new HashSet<S>();
 	      List<Map<S,S>> backPointers = new ArrayList<Map<S,S>>();
-	      
 	      CounterMap< Integer , S> pie = new CounterMap< Integer , S>();
 	      
+	      // Initialization of Viterbi algorithm
+	      // Set current state to start state
 	      S currentState = trellis.getStartState();
-	      
-	      // set position to 0
+	      // Set position to 0
 	      int position = 0;
-	      allStates.add(currentState);
-	      allStates.add(trellis.getEndState());
+	      // Set the backpointer for start state to null
 	      backPointers.add(position, null);
+	      
+	      // Add current state to all states
+	      allStates.add(currentState);
+	      // Add stop state to all states
+	      allStates.add(trellis.getEndState());
 	      
 	      position += 1; 
 	      while( position < sentenceLength+3 ){
@@ -453,7 +459,6 @@ public class POSTaggerTester {
             nextStates.add(nextState);
           }
         }
-//        System.out.println("States: "+nextStates);
         states = nextStates;
       }
       return trellis;
@@ -462,11 +467,8 @@ public class POSTaggerTester {
     // to tag a sentence: build its trellis and find a path through that trellis
     public List<String> tag(List<String> sentence) {
       Trellis<State> trellis = buildTrellis(sentence);
-//      System.out.println(sentence);
-//      System.out.println(sentence.size());
       List<State> states = trellisDecoder.getBestPath(trellis, sentence.size());
       List<String> tags = State.toTagList(states);
-//      System.out.println(tags);
       tags = stripBoundaryTags(tags);
       return tags;
     }
@@ -556,27 +558,6 @@ public class POSTaggerTester {
       this.previousPreviousTag = previousPreviousTag;
       this.previousCaps = isCapitalised(words.get(position-1));
       this.previousPreviousCaps = isCapitalised(words.get(position-2));
-    }
-  }
-
-  /**
-   * A OldLabeledLocalTrigramContext is a context plus the correct tag for that
-   * position -- basically a LabeledFeatureVector
-   */
-  static class OldLabeledLocalTrigramContext extends LocalTrigramContext {
-    String currentTag;
-
-    public String getCurrentTag() {
-      return currentTag;
-    }
-
-    public String toString() {
-      return "[" + getPreviousPreviousTag() + ", " + getPreviousTag() + ", " + getCurrentWord() + "_" + getCurrentTag() + "]";
-    }
-
-    public OldLabeledLocalTrigramContext(List<String> words, int position, String previousPreviousTag, String previousTag, String currentTag) {
-      super(words, position, previousPreviousTag, previousTag);
-      this.currentTag = currentTag;
     }
   }
   
@@ -732,16 +713,15 @@ public class POSTaggerTester {
           	}
         }
         else{
-        	// look at suffixes
-
+        	// max length suffix
         	String bestSuffix = getSuffix(word, SUFFIX_LEN);
-
     		
-        	// get candidate tags
+        	// candidate tags
     		Set<Pair<String,Boolean>> candidateTags;
     		CounterMap<Pair<String,Boolean>,String> tagsSuffix;
     		
     		if(!isCapitalised(word)){
+    			// max length suffix that exists with frequency > 0
             	for(int i=SUFFIX_LEN; i > 0; i--){
             		String newSuffix = getSuffix(word, i);
             		if (knownSuffixes.containsKey(newSuffix)){
@@ -749,7 +729,6 @@ public class POSTaggerTester {
             			break;
             		}
             	}
-
     			candidateTags = smoothedSuffixToTags.getCounter(bestSuffix).keySet();
     			tagsSuffix = tagsToSuffix;
     		}
@@ -799,6 +778,9 @@ public class POSTaggerTester {
       return previousPreviousTag + " " + previousTag + " " + currentTag;
     }
     
+    /*
+     * 
+     */
     public Double pHat(int l, String s, Pair t, double theta, CounterMap<String, Pair<String, Boolean>> suffixToTagProbabilities){
     	if(l == 0){
     		// t3 is basically known tags
@@ -806,7 +788,10 @@ public class POSTaggerTester {
     	}
     	return (suffixToTagProbabilities.getCounter(getSuffix(s, l)).getCount(t) + (theta * pHat(l-1, s, t, theta, suffixToTagProbabilities)) )/( 1 + theta);
     }
-     
+    
+    /*
+     * Smooth Suffix Probabilities 
+     */
     public CounterMap<String, Pair<String, Boolean>> smoothSuffixProbabilities(CounterMap<String, Pair<String, Boolean>> suffixProbability, Double theta){
     	CounterMap<String, Pair<String, Boolean>> smoothSuffixProbability = new CounterMap<String, Pair<String, Boolean>>();
     	for (String s: suffixProbability.keySet()){
@@ -948,7 +933,6 @@ public class POSTaggerTester {
           String trigram = makeTrigramString(previousPreviousTag + previousPreviousCaps, previousTag + previousCaps, tag + caps);        
           Pair<String, Boolean> tagPair = new Pair<String, Boolean>(tag,caps);
           Pair<String, Boolean> previousTagPair = new Pair<String, Boolean>(previousTag, previousCaps);
-
           
           Double fif2f3 = t1t2t3.getCount(trigram);
           Double f1f2 = t1t2.getCount(precedingTags);
@@ -982,9 +966,12 @@ public class POSTaggerTester {
         		  lambda3 += (fif2f3/2);
         		  lambda1 += (fif2f3/2);
         	  }
-
+        	  else if ((v1==v3) && (v1==v2)){
+        		  lambda3 += (fif2f3/3);
+        		  lambda2 += (fif2f3/3);
+        		  lambda1 += (fif2f3/3);
+        	  }
           }
-          
       }
       
       Double sum = lambda1 + lambda2 + lambda3;
