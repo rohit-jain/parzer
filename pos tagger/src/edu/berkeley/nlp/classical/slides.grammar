@@ -1,0 +1,11 @@
+ROOT -> S
+S -> NP VP
+VP -> VBP
+VP -> VBP NP
+VP -> VP PP
+PP -> IN NP
+NP -> NNS
+NP -> NN
+NP -> JJ NP
+NP -> NP NNS
+NP -> NP PP
