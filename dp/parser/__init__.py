@@ -1,55 +1,10 @@
 import logging
 import os
+import sentence
+import dependency_parser
 
 LOG_FILENAME = 'logging.out'
 logging.basicConfig(filename=LOG_FILENAME, level=logging.DEBUG,)
-
-class Parser(object):
-	"""
-	Abstract Class ( Interface ) for Parser
-	"""
-	def __init__(self, arg):
-		self.arg = arg
-	
-	def train():
-        raise NotImplementedError( "Should have implemented this" )
-
-    def validate():
-	    raise NotImplementedError( "Should have implemented this" )
-
-	def test():
-        raise NotImplementedError( "Should have implemented this" )		
-
-class SVMParser(Parser):
-	"""
-	Dependency parser based on yamada et al ( 2003 )
-	"""
-	def __init__(self, arg):
-		Parser.__init__(self)
-		self.arg = arg
-		
-
-class Sentence(object):
-	"""unlabeled sentence"""
-
-	def __init__(self, words):
-		# the list of words in the sentence
-		self.words = words
-
-
-class ParsedSentence(Sentence):
-	"""labeled sentence with the parsed positions"""
-
-	def __init__(self, words, pos_tags, dependency):
-		Sentence.__init__(self, words)
-		self.pos_tags = pos_tags
-		self.dependency = dependency
-
-	def __repr__(self):
-		words = str(self.words)
-		pos_tags = str(self.pos_tags)
-		dependency = str(self.dependency)
-		return "<ParsedSentence words: %s, pos_tags: %s, dependencies: %s>" % (words, pos_tags, dependency)
 
 def read_penn_treebank( path, low, high):
 	"""
@@ -77,7 +32,10 @@ def read_penn_treebank( path, low, high):
 						pos_tags += [ tag ]
 						dependencies += [ int(dependency) ]
 					else:
-						sentences += [ParsedSentence( words, pos_tags, dependencies )]
+						sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
+						words = []
+						pos_tags = []
+						dependencies = []
 		s += 1
 	return sentences
 
@@ -89,4 +47,6 @@ if __name__ == '__main__':
 	# Read validate sentences from penn treebank for the given sections without labels
 	valdation_sentences = read_penn_treebank(DATA_PATH, "0011", "0021")
 	# Initialise parser
+	my_parser = dependency_parser.SVMParser()
 	# train the data
+	my_parser.train( training_sentences )
