@@ -1,3 +1,5 @@
+import node
+
 class Sentence(object):
 	"""unlabeled sentence"""
 
@@ -7,7 +9,7 @@ class Sentence(object):
 		self.trees = []
 		position = 0
 		for word in words:
-			self.trees += [(word, position)]
+			self.trees += [ node.Node(word, position)]
 			position += 1
 
 	def get_trees():
@@ -28,12 +30,13 @@ class ParsedSentence(Sentence):
 		Sentence.__init__(self, words)
 		self.pos_tags = pos_tags
 		self.dependency = dependency
-
-	def get_labeled_trees():
-		trees = []
+		self.trees = []
 		for i in range(len(self.words)):
-			trees += [(self.words[i], i, self.pos_tags[i], self.dependency[i])]
-		return trees
+			self.trees += [ node.Node(self.words[i], i, self.pos_tags[i], self.dependency[i]) ]
+
+
+	def get_labeled_trees(self):
+		return self.trees
 
 	def __repr__(self):
 		words = str(self.words)
