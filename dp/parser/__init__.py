@@ -2,9 +2,18 @@ import logging
 import os
 import sentence
 import dependency_parser
+import collections
 
 LOG_FILENAME = 'logging.out'
 logging.basicConfig(filename=LOG_FILENAME, level=logging.DEBUG,)
+
+def extract_vocabulary_tags(sentences):
+	vocab = collections.Counter()
+	tags = collections.Counter()
+	for s in sentences:
+		vocab.update(s.words)
+		tags.update(s.pos_tags)
+	return vocab.keys(), tags.keys()
 
 def read_penn_treebank( path, low, high):
 	"""
@@ -47,10 +56,14 @@ if __name__ == '__main__':
 	DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/wsj_parsed/"
 	# Read train sentences from penn treebank for the given sections with labels
 	logging.info("Reading training data")
-	training_sentences = read_penn_treebank(DATA_PATH, "0001", "0010")
+	training_sentences = read_penn_treebank(DATA_PATH, "0000", "0011")
 	# Read validate sentences from penn treebank for the given sections without labels
 	valdation_sentences = read_penn_treebank(DATA_PATH, "0011", "0021")
+
+	training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
+	logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
+	
 	# Initialise parser
-	my_parser = dependency_parser.SVMParser()
+	my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
 	# train the data
 	my_parser.train( training_sentences )
