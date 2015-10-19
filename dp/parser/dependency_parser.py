@@ -1,3 +1,6 @@
+import numpy as np
+from scipy.sparse import csr_matrix, lil_matrix
+
 class Parser(object):
 	"""
 	Abstract Class ( Interface ) for Parser
@@ -54,16 +57,22 @@ class SVMParser(Parser):
 		return trees
 
 	def extract_features(self, trees, i):
-		lex = dict.fromkeys(self.vocab, False)
-		tags = dict.fromkeys(self.tags, False)
-		for word in trees[i].lex:
-			lex[word] = True
-		for tag in trees[i].pos_tag:
-			tags[tag] = True
-		return lex.values() + tags.values()
+		# lex = dict.fromkeys(self.vocab, False)
+		# tags = dict.fromkeys(self.tags, False)
+		target_node = trees[i]
+		# lex[target_node.lex] = True
+		# tags[target_node.pos_tag] = True	
+		# return lex.values() + tags.values()
+		return [self.vocab[(target_node.lex)], self.tags[(target_node.pos_tag)]]
 
 	def train(self, sentences):
+		m = len(sentences)
+		n = len(self.vocab) + len(self.tags)
+		print m
+		print n
+		# train_x = lil_matrix((m, n), dtype=np.bool)
 		train_x = []
+		s_index = 0
 		for s in sentences:
 			trees = s.get_labeled_trees()
 			# print "Original"
@@ -79,7 +88,7 @@ class SVMParser(Parser):
 					i = 0
 				else:
 					# extract features
-					train_x += [self.extract_features(trees, i)]
+					print (self.extract_features(trees, i))
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_action(trees, i)
 					# execute the action and modify the trees
@@ -88,4 +97,5 @@ class SVMParser(Parser):
 						no_construction = False
 					else:
 						i += 1
-		print train_x
+			s_index += 1
+		print len(train_x)
