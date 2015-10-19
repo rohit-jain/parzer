@@ -1,5 +1,10 @@
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
+from sklearn import svm
+
+LEFT = 0
+SHIFT = 1
+RIGHT = 2
 
 class Parser(object):
 	"""
@@ -36,34 +41,31 @@ class SVMParser(Parser):
 		a = trees[position]
 		b = trees[position + 1]
 		if a.dependency == b.position and self.complete_subtree(trees, a):
-				return "RIGHT"
+				return RIGHT
 		elif b.dependency == a.position and self.complete_subtree(trees, b):
-				return "LEFT"
+				return LEFT
 		else:
-			return "SHIFT"
+			return SHIFT
 
 	def take_action(self, trees, position, action):
 		a = trees[position]
 		b = trees[position + 1]
 			
-		if action == "RIGHT":
+		if action == RIGHT:
 			b.insert_right(a)
 			trees[position + 1] = b
 			trees.remove(a)
-		elif action == "LEFT":
+		elif action == LEFT:
 			a.insert_left(b)
 			trees[position] = a
 			trees.remove(b)
 		return trees
 
 	def extract_features(self, trees, i):
-		# lex = dict.fromkeys(self.vocab, False)
-		# tags = dict.fromkeys(self.tags, False)
 		target_node = trees[i]
-		# lex[target_node.lex] = True
-		# tags[target_node.pos_tag] = True	
-		# return lex.values() + tags.values()
-		return [self.vocab[(target_node.lex)], self.tags[(target_node.pos_tag)]]
+		lex_index = self.vocab[(target_node.lex)]
+		tag_index = len(self.vocab) + self.tags[(target_node.pos_tag)]
+		return [lex_index, tag_index]
 
 	def train(self, sentences):
 		m = len(sentences)
@@ -72,7 +74,7 @@ class SVMParser(Parser):
 		print n
 		# train_x = lil_matrix((m, n), dtype=np.bool)
 		train_x = []
-		s_index = 0
+		train_y = []
 		for s in sentences:
 			trees = s.get_labeled_trees()
 			# print "Original"
@@ -88,14 +90,27 @@ class SVMParser(Parser):
 					i = 0
 				else:
 					# extract features
-					print (self.extract_features(trees, i))
+					train_x.append(self.extract_features(trees, i))
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_action(trees, i)
+					train_y += [y]
 					# execute the action and modify the trees
-					if y!="SHIFT":
+					if y!= SHIFT:
 						trees = self.take_action(trees, i ,y)
 						no_construction = False
 					else:
 						i += 1
-			s_index += 1
+		features = lil_matrix((len(train_x),n), dtype = bool)
+
+		for i,j in train_x:
+			features[i,j] = True
+		features = features.tocsr()
 		print len(train_x)
+		# features = np.zeros((len(train_x),n), dtype = bool)
+		# for i,j in train_x:
+		# 	features[i][j] = True
+
+		train_x = None
+		clf = svm.LinearSVC()
+		clf.fit(features, train_y)
+		# print features

@@ -100,7 +100,7 @@ def main():
 	DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/wsj_parsed/"
 	# Read train sentences from penn treebank for the given sections with labels
 	logging.info("Reading training data")
-	training_sentences = read_penn_treebank(DATA_PATH, "0000", "1000")
+	training_sentences = read_penn_treebank(DATA_PATH, "0000", "2199")
 	# Read validate sentences from penn treebank for the given sections without labels
 	valdation_sentences = read_penn_treebank(DATA_PATH, "0011", "0021")
 
