@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
 from sklearn import svm
+from nltk.tag import StanfordPOSTagger
 
 LEFT = 0
 SHIFT = 1
@@ -30,6 +31,7 @@ class SVMParser(Parser):
 		Parser.__init__(self)
 		self.vocab = vocab
 		self.tags = tags
+		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
 
 	def complete_subtree(self, trees, child):
 		for t in trees:
@@ -67,14 +69,21 @@ class SVMParser(Parser):
 		tag_index = len(self.vocab) + self.tags[(target_node.pos_tag)]
 		return [lex_index, tag_index]
 
+	def left_pos(self, trees, i):
+		target_node = trees[i]
+		return target_node.pos_tag
+
 	def train(self, sentences):
 		m = len(sentences)
 		n = len(self.vocab) + len(self.tags)
 		print m
 		print n
 		# train_x = lil_matrix((m, n), dtype=np.bool)
-		train_x = []
-		train_y = []
+		train_x = {}
+		train_y = {}
+		features = {}
+		clf = {}
+
 		for s in sentences:
 			trees = s.get_labeled_trees()
 			# print "Original"
@@ -89,28 +98,45 @@ class SVMParser(Parser):
 					no_construction = True
 					i = 0
 				else:
+					left_pos_tag = self.left_pos(trees, i)
+					
 					# extract features
-					train_x.append(self.extract_features(trees, i))
+					extracted_features = self.extract_features(trees, i)
+
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_action(trees, i)
-					train_y += [y]
+
+					if left_pos_tag in train_x:
+						train_x[left_pos_tag].append( extracted_features )
+						train_y[left_pos_tag].append( y )
+
+					else:
+						train_x[left_pos_tag] = [extracted_features]
+						train_y[left_pos_tag] = [y]
+
 					# execute the action and modify the trees
 					if y!= SHIFT:
 						trees = self.take_action(trees, i ,y)
 						no_construction = False
 					else:
 						i += 1
-		features = lil_matrix((len(train_x),n), dtype = bool)
 
-		for i,j in train_x:
-			features[i,j] = True
-		features = features.tocsr()
-		print len(train_x)
-		# features = np.zeros((len(train_x),n), dtype = bool)
-		# for i,j in train_x:
-		# 	features[i][j] = True
+		for lp in train_x:
+			print lp
+			print len(train_x[lp])
+			temp_features = lil_matrix((len(train_x[lp]),n), dtype = bool)
 
-		train_x = None
-		clf = svm.LinearSVC()
-		clf.fit(features, train_y)
-		# print features
+			for i in range( 0, len(train_x[lp]) ):
+				j, k = train_x[lp][i]
+				temp_features[i,j]  = True
+				temp_features[i,k] = True
+
+			features[lp] = temp_features.tocsr()
+
+			train_x[lp] = None
+			clf[lp] = svm.SVC(kernel='poly', degree=2)
+			clf[lp].fit(features[lp], train_y[lp])
+
+	def test(self, sentences):
+			for s in sentences:
+				print self.st.tag(s.words)

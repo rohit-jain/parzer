@@ -58,7 +58,44 @@ def extract_vocabulary_tags(sentences):
 		i += 1
 	return v,t
 
-def read_penn_treebank( path, low, high):
+def read_unlabeled_penn_treebank( path, low, high ):
+	"""
+	Read sentences from dependency 
+	converted penn treebank files
+	"""
+	sentences = []
+	s = int(low[0:2])
+	e = int(high[0:2])
+	sentences = []
+
+	while( s <= e ):
+		segment = path + str(s).zfill(2)
+		for f in os.listdir(segment):
+			file_path = segment + "/" + f
+			if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
+				sentence_file = open( file_path , "r") 
+				words = []
+				pos_tags = []
+				dependencies = []
+				for line in open( file_path , "r"):
+					if (line != "\n"):
+						word, tag, dependency = line.strip("\n").split("\t")
+						words += [ word ]
+						#pos_tags += [ tag ]
+						#dependencies += [ int(dependency) ]
+					else:
+						# test with only one sentence
+						# if len(sentences) == 1:
+						# 	break
+						# if len(words) >= 6 and len(words) <= 14:
+						sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
+						words = []
+						pos_tags = []
+						dependencies = []
+		s += 1
+	return sentences
+
+def read_penn_treebank( path, low, high ):
 	"""
 	Read sentences from dependency 
 	converted penn treebank files
@@ -102,7 +139,7 @@ def main():
 	logging.info("Reading training data")
 	training_sentences = read_penn_treebank(DATA_PATH, "0000", "2199")
 	# Read validate sentences from penn treebank for the given sections without labels
-	valdation_sentences = read_penn_treebank(DATA_PATH, "0011", "0021")
+	valdation_sentences = read_penn_treebank(DATA_PATH, "2200", "2299")
 
 	training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
 	logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
@@ -110,7 +147,8 @@ def main():
 	# Initialise parser
 	my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
 	# train the data
-	my_parser.train( training_sentences )
+#	my_parser.train( training_sentences )
+	my_parser.test ( valdation_sentences )
 
 if __name__ == '__main__':
 	main()
