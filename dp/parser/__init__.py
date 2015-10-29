@@ -56,6 +56,8 @@ def extract_vocabulary_tags(sentences):
 	for k in tags.keys():
 		t[k] = i
 		i += 1
+	v["<UNKNOWN>"] = i
+	t["<UNKNOWN>"] = i
 	return v,t
 
 def read_unlabeled_penn_treebank( path, low, high ):
@@ -137,9 +139,9 @@ def main():
 	DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/wsj_parsed/"
 	# Read train sentences from penn treebank for the given sections with labels
 	logging.info("Reading training data")
-	training_sentences = read_penn_treebank(DATA_PATH, "0000", "2199")
+	training_sentences = read_penn_treebank(DATA_PATH, "0000", "0099")
 	# Read validate sentences from penn treebank for the given sections without labels
-	valdation_sentences = read_penn_treebank(DATA_PATH, "2200", "2299")
+	valdation_sentences = read_penn_treebank(DATA_PATH, "0100", "0101")
 
 	training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
 	logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
@@ -147,7 +149,7 @@ def main():
 	# Initialise parser
 	my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
 	# train the data
-#	my_parser.train( training_sentences )
+	# my_parser.train( training_sentences )
 	my_parser.test ( valdation_sentences )
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+*.p
 *.pyc
 *.out
 /converter/*
