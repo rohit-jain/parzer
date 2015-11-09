@@ -35,7 +35,7 @@ class SVMParser(Parser):
 		self.vocab = vocab
 		self.tags = tags
 		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
-		self.clf = pickle.load( open( "svm2.p", "rb" ) )
+		self.clf = {} # pickle.load( open( "svm2.p", "rb" ) )
 
 	def complete_subtree(self, trees, child):
 		for t in trees:
