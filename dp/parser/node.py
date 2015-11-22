@@ -49,7 +49,7 @@ class Node(object):
 		if len(self.left) > 0:
 			for l in self.left:
 				temp_left += [str(l)]
-		return "lex: %s, pos_tag: %s, left: %s, right: %s\n" % (self.lex, self.pos_tag, "[" + "\n".join(temp_left) + "]", "[" + "\n".join(temp_right) + "]")
+		return "lex: %s, pos_tag: %s, dependency: %s, position: %s, left: %s, right: %s\n" % (self.lex, self.pos_tag, self.dependency, self.position , "[" + "\n".join(temp_left) + "]", "[" + "\n".join(temp_right) + "]")
 	
 	def __repr__(self):
 		temp_left = []

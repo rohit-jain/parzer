@@ -37,7 +37,8 @@ class SVMParser(Parser):
 		self.vocab = vocab
 		self.tags = tags
 		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
-		self.clf = pickle.load( open( "svm2.p", "rb" ) )
+		self.clf = {}
+		# pickle.load( open( "svm2.p", "rb" ) )
 		self.actions = Counter()
 		self.N_FEATURES = (3 * len(self.vocab)) + (3 * len(self.tags))
 		
@@ -67,8 +68,9 @@ class SVMParser(Parser):
 		if tree_pos_tag in self.clf:
 			action_array = self.clf[tree_pos_tag].predict( temp_features )
 		else:
-			action_array = [SHIFT, LEFT, RIGHT]
-			random.shuffle(action_array)# [i[0] for i in self.actions.most_common(1)]
+			# action_array = [SHIFT, LEFT, RIGHT]
+			# random.shuffle(action_array)
+			action_array = [i[0] for i in self.actions.most_common(1)]
 			print action_array
 		return action_array[0]
 
@@ -244,7 +246,9 @@ class SVMParser(Parser):
 			if(len(it) == 1):
 				complete_parses += 1
 				s = gold_sentences[i]
-				
+				# print s.words
+				# print s.dependency
+				# print it[0]
 				correct_parents += it[0].match(s)
 				total_parents += (len(s.words) - 1)
 
