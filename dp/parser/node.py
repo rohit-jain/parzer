@@ -1,5 +1,3 @@
-from sentence import Sentence
-
 class Node(object):
 	"""
 	Node of a tree

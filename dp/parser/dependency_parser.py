@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
 from sklearn import svm
@@ -5,7 +6,6 @@ from nltk.tag import StanfordPOSTagger
 import sentence
 import pickle, random
 from sets import Set
-from __future__ import division
 from collections import Counter
 
 LEFT = 0
@@ -37,8 +37,10 @@ class SVMParser(Parser):
 		self.vocab = vocab
 		self.tags = tags
 		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
-		self.clf = {} # pickle.load( open( "svm2.p", "rb" ) )
+		self.clf = pickle.load( open( "svm2.p", "rb" ) )
 		self.actions = Counter()
+		self.N_FEATURES = (3 * len(self.vocab)) + (3 * len(self.tags))
+		
 
 	def complete_subtree(self, trees, child):
 		for t in trees:
@@ -59,14 +61,15 @@ class SVMParser(Parser):
 
 	def estimate_action(self, trees, position, extracted_features):
 		tree_pos_tag = self.get_pos( trees, position )
-		n = len(self.vocab) + (3 * len(self.tags))
-		temp_features = lil_matrix((1,n), dtype = bool)
+		temp_features = lil_matrix((1,self.N_FEATURES), dtype = bool)
 		for i in extracted_features:
 			temp_features[0,i] = True
 		if tree_pos_tag in self.clf:
 			action_array = self.clf[tree_pos_tag].predict( temp_features )
 		else:
-			action_array = self.clf["<UNKNOWN>"].predict( temp_features )
+			action_array = [SHIFT, LEFT, RIGHT]
+			random.shuffle(action_array)# [i[0] for i in self.actions.most_common(1)]
+			print action_array
 		return action_array[0]
 
 
@@ -88,33 +91,33 @@ class SVMParser(Parser):
 		target_node = trees[i]
 
 		lex_index = self.vocab[("<UNKNOWN>")]
-		left_lex_index = self.vocab[("<UNKNOWN>")]
-		right_lex_index = self.vocab[("<UNKNOWN>")]
+		left_lex_index = len(self.vocab) + self.vocab[("<UNKNOWN>")]
+		right_lex_index = 2*len(self.vocab) + self.vocab[("<UNKNOWN>")]
 
-		tag_index = len(self.vocab) + self.tags[("<UNKNOWN>")]
-		left_tag_index = len(self.vocab) + len(self.tags) + self.tags[("<UNKNOWN>")]
-		right_tag_index = len(self.vocab) + 2*len(self.tags) + self.tags[("<UNKNOWN>")]
+		tag_index = 3*len(self.vocab) + self.tags[("<UNKNOWN>")]
+		left_tag_index = 3*len(self.vocab) + len(self.tags) + self.tags[("<UNKNOWN>")]
+		right_tag_index = 3*len(self.vocab) + 2*len(self.tags) + self.tags[("<UNKNOWN>")]
 		
 		if ((target_node.lex) in self.vocab):
 			lex_index = self.vocab[(target_node.lex)]
 
 		if ( target_node.pos_tag in self.tags):
-			tag_index = len(self.vocab) + self.tags[(target_node.pos_tag)]
+			tag_index = 3*len(self.vocab) + self.tags[(target_node.pos_tag)]
 
 
 		if( i!= 0 ):
 			left_target_node = trees[i-1]
 			if ((left_target_node.lex) in self.vocab):
-				left_lex_index = self.vocab[(left_target_node.lex)]
+				left_lex_index = len(self.vocab) + self.vocab[(left_target_node.lex)]
 			if ( left_target_node.pos_tag in self.tags):
-				left_tag_index = len(self.vocab) + len(self.tags) + self.tags[(left_target_node.pos_tag)]
+				left_tag_index = 3*len(self.vocab) + len(self.tags) + self.tags[(left_target_node.pos_tag)]
 
 		if( i < (len(trees) - 1) ):
 			right_target_node = trees[i+1]
 			if ((right_target_node.lex) in self.vocab):
-				right_lex_index = self.vocab[(right_target_node.lex)]
+				right_lex_index = 2*len(self.vocab) + self.vocab[(right_target_node.lex)]
 			if ( right_target_node.pos_tag in self.tags):
-				right_tag_index = len(self.vocab) + 2*len(self.tags) + self.tags[(right_target_node.pos_tag)]
+				right_tag_index = 3*len(self.vocab) + 2*len(self.tags) + self.tags[(right_target_node.pos_tag)]
 			
 
 		return [lex_index, tag_index, left_lex_index, left_tag_index, right_lex_index, right_tag_index]
@@ -125,10 +128,7 @@ class SVMParser(Parser):
 
 	def train(self, sentences):
 		m = len(sentences)
-		n = len(self.vocab) + len(self.tags)
 		print m
-		print n
-		# train_x = lil_matrix((m, n), dtype=np.bool)
 		train_x = {}
 		train_y = {}
 		features = {}
@@ -152,6 +152,7 @@ class SVMParser(Parser):
 					
 					# extract features
 					extracted_features = self.extract_features(trees, i)
+					# print (extracted_features)
 
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_train_action(trees, i)
@@ -175,12 +176,14 @@ class SVMParser(Parser):
 		for lp in train_x:
 			print lp
 			print len(train_x[lp])
-			temp_features = lil_matrix((len(train_x[lp]),n), dtype = bool)
+			temp_features = lil_matrix((len(train_x[lp]), self.N_FEATURES), dtype = bool)
+			print self.N_FEATURES
 
 			for i in range( 0, len(train_x[lp]) ):
-				j, k = train_x[lp][i]
-				temp_features[i,j]  = True
-				temp_features[i,k] = True
+				lex_index, tag_index, left_lex_index, left_tag_index, right_lex_index, right_tag_index = train_x[lp][i]
+				temp_features[ i,lex_index ], temp_features[ i,tag_index ] = True, True
+				temp_features[ i,left_lex_index ], temp_features[ i,left_tag_index ] = True, True
+				temp_features[ i,right_lex_index ], temp_features[ i,right_tag_index ] = True, True
 
 			features[lp] = temp_features.tocsr()
 
@@ -203,7 +206,6 @@ class SVMParser(Parser):
 		for s in sentences:
 			test_sentences += [sentence.Sentence( s.words, s.pos_tags )]
 
-		print "sentences converted"
 		for s in test_sentences:
 			trees = s.get_trees()
 			i = 0
@@ -221,7 +223,6 @@ class SVMParser(Parser):
 
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_action(trees, i, extracted_features)
-					print y
 					# execute the action and modify the trees
 					if y!= SHIFT:
 						trees = self.take_action(trees, i ,y)
@@ -244,12 +245,16 @@ class SVMParser(Parser):
 				complete_parses += 1
 				s = gold_sentences[i]
 				
-				correct_parents += it.match(s)
+				correct_parents += it[0].match(s)
 				total_parents += (len(s.words) - 1)
 
-				if( s[it.position] == -1 ):
+				if( s.dependency[it[0].position] == -1 ):
 					correct_roots += 1
 
+		print correct_roots
+		print correct_parents
+		print complete_parses
+		print total_sentences
 		print "root accuracy: " + str(correct_roots/total_sentences)
 		print "dependency accuracy: " + str(correct_parents/total_parents)
 		print "completion rate: " + str(complete_parses/total_sentences)

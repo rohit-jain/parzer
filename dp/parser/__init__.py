@@ -110,6 +110,7 @@ def read_test_penn_treebank( path, low, high ):
                 words = []
                 pos_tags = []
                 dependencies = []
+                tags = []
                 for line in open( file_path , "r"):
                     if (line != "\n"):
                         word, tag, pos_tag, dependency = line.strip("\n").split("\t")
@@ -122,7 +123,7 @@ def read_test_penn_treebank( path, low, high ):
                         # if len(sentences) == 1:
                         #   break
                         # if len(words) >= 6 and len(words) <= 14:
-                        sentences += [sentence.StanfordParsedSentence( words, tags, dependencies )]
+                        sentences += [sentence.ParsedSentence( words, tags, dependencies )]
                         words = []
                         tags = []
                         pos_tags = []
@@ -184,20 +185,22 @@ def main():
     ST_DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/st_tagged/"
     # Read train sentences from penn treebank for the given sections with labels
     logging.info("Reading training data")
-    training_sentences = read_penn_treebank(DATA_PATH, "0000", "2199")
+    training_sentences = read_penn_treebank(DATA_PATH, "0000", "0099")
     # Read validate sentences from penn treebank for the given sections without labels
-    valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "0000", "2454")
+    valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2100", "2199")
 
     training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
-    # logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
+    logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
     
     # Initialise parser
     my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
     # train the data
-    my_parser.train( training_sentences )
+    logging.info("train")
+    # my_parser.train( training_sentences )
     # my_parser.tag( valdation_sentences )
-    my_parser.test ( valdation_sentences )
-    my_parser.evaluate( )
+    print "infer"
+    inferred_trees = my_parser.test ( valdation_sentences )
+    my_parser.evaluate( inferred_trees, valdation_sentences )
 
 if __name__ == '__main__':
     main()
