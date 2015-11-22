@@ -5,6 +5,8 @@ from nltk.tag import StanfordPOSTagger
 import sentence
 import pickle, random
 from sets import Set
+from __future__ import division
+from collections import Counter
 
 LEFT = 0
 SHIFT = 1
@@ -36,6 +38,7 @@ class SVMParser(Parser):
 		self.tags = tags
 		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
 		self.clf = {} # pickle.load( open( "svm2.p", "rb" ) )
+		self.actions = Counter()
 
 	def complete_subtree(self, trees, child):
 		for t in trees:
@@ -55,13 +58,13 @@ class SVMParser(Parser):
 
 
 	def estimate_action(self, trees, position, extracted_features):
-		left_pos_tag = self.left_pos( trees, position )
-		n = len(self.vocab) + len(self.tags)
+		tree_pos_tag = self.get_pos( trees, position )
+		n = len(self.vocab) + (3 * len(self.tags))
 		temp_features = lil_matrix((1,n), dtype = bool)
 		for i in extracted_features:
 			temp_features[0,i] = True
-		if left_pos_tag in self.clf:
-			action_array = self.clf[left_pos_tag].predict( temp_features )
+		if tree_pos_tag in self.clf:
+			action_array = self.clf[tree_pos_tag].predict( temp_features )
 		else:
 			action_array = self.clf["<UNKNOWN>"].predict( temp_features )
 		return action_array[0]
@@ -83,18 +86,40 @@ class SVMParser(Parser):
 
 	def extract_features(self, trees, i):
 		target_node = trees[i]
+
+		lex_index = self.vocab[("<UNKNOWN>")]
+		left_lex_index = self.vocab[("<UNKNOWN>")]
+		right_lex_index = self.vocab[("<UNKNOWN>")]
+
+		tag_index = len(self.vocab) + self.tags[("<UNKNOWN>")]
+		left_tag_index = len(self.vocab) + len(self.tags) + self.tags[("<UNKNOWN>")]
+		right_tag_index = len(self.vocab) + 2*len(self.tags) + self.tags[("<UNKNOWN>")]
+		
 		if ((target_node.lex) in self.vocab):
 			lex_index = self.vocab[(target_node.lex)]
-		else:
-			lex_index = self.vocab[("<UNKNOWN>")]
-		
+
 		if ( target_node.pos_tag in self.tags):
 			tag_index = len(self.vocab) + self.tags[(target_node.pos_tag)]
-		else:
-			tag_index = len(self.vocab) + self.tags[("<UNKNOWN>")]
-		return [lex_index, tag_index]
 
-	def left_pos(self, trees, i):
+
+		if( i!= 0 ):
+			left_target_node = trees[i-1]
+			if ((left_target_node.lex) in self.vocab):
+				left_lex_index = self.vocab[(left_target_node.lex)]
+			if ( left_target_node.pos_tag in self.tags):
+				left_tag_index = len(self.vocab) + len(self.tags) + self.tags[(left_target_node.pos_tag)]
+
+		if( i < (len(trees) - 1) ):
+			right_target_node = trees[i+1]
+			if ((right_target_node.lex) in self.vocab):
+				right_lex_index = self.vocab[(right_target_node.lex)]
+			if ( right_target_node.pos_tag in self.tags):
+				right_tag_index = len(self.vocab) + 2*len(self.tags) + self.tags[(right_target_node.pos_tag)]
+			
+
+		return [lex_index, tag_index, left_lex_index, left_tag_index, right_lex_index, right_tag_index]
+
+	def get_pos(self, trees, i):
 		target_node = trees[i]
 		return target_node.pos_tag
 
@@ -123,21 +148,22 @@ class SVMParser(Parser):
 					no_construction = True
 					i = 0
 				else:
-					left_pos_tag = self.left_pos(trees, i)
+					tree_pos_tag = self.get_pos(trees, i)
 					
 					# extract features
 					extracted_features = self.extract_features(trees, i)
 
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_train_action(trees, i)
+					self.actions[y] += 1
 
-					if left_pos_tag in train_x:
-						train_x[left_pos_tag].append( extracted_features )
-						train_y[left_pos_tag].append( y )
+					if tree_pos_tag in train_x:
+						train_x[tree_pos_tag].append( extracted_features )
+						train_y[tree_pos_tag].append( y )
 
 					else:
-						train_x[left_pos_tag] = [extracted_features]
-						train_y[left_pos_tag] = [y]
+						train_x[tree_pos_tag] = [extracted_features]
+						train_y[tree_pos_tag] = [y]
 
 					# execute the action and modify the trees
 					if y!= SHIFT:
@@ -172,17 +198,13 @@ class SVMParser(Parser):
 		print "pickling done"
 
 	def test(self, sentences):
-		infered_sentences = []
-		l = 0
+		test_sentences = []
+		inferred_trees = []
 		for s in sentences:
-			l+=1
-			word_tag_pairs = self.st.tag(s.words)
-			tags = [i for i,j in word_tag_pairs]
-			infered_sentences += [sentence.Sentence( s.words, tags )]
-			print l
+			test_sentences += [sentence.Sentence( s.words, s.pos_tags )]
 
 		print "sentences converted"
-		for s in infered_sentences:
+		for s in test_sentences:
 			trees = s.get_trees()
 			i = 0
 			no_construction = False
@@ -206,4 +228,28 @@ class SVMParser(Parser):
 						no_construction = False
 					else:
 						i += 1
-			print trees
+			inferred_trees += [trees]
+		return inferred_trees
+
+
+	def evaluate(self, inferred_trees, gold_sentences):
+		correct_roots = 0
+		correct_parents = 0
+		total_parents = 0
+		total_sentences = len(gold_sentences)
+		complete_parses = 0
+
+		for i,it in enumerate(inferred_trees):
+			if(len(it) == 1):
+				complete_parses += 1
+				s = gold_sentences[i]
+				
+				correct_parents += it.match(s)
+				total_parents += (len(s.words) - 1)
+
+				if( s[it.position] == -1 ):
+					correct_roots += 1
+
+		print "root accuracy: " + str(correct_roots/total_sentences)
+		print "dependency accuracy: " + str(correct_parents/total_parents)
+		print "completion rate: " + str(complete_parses/total_sentences)

@@ -4,6 +4,7 @@ import sentence
 import dependency_parser
 import collections
 import time
+from nltk.tag import StanfordPOSTagger
 from functools import wraps
 
 PROF_DATA = {}
@@ -41,117 +42,163 @@ def clear_prof_data():
 
 
 def extract_vocabulary_tags(sentences):
-	vocab = collections.Counter()
-	tags = collections.Counter()
-	for s in sentences:
-		vocab.update(s.words)
-		tags.update(s.pos_tags)
-	v = {}
-	i = 0
-	for k in vocab.keys():
-		v[k] = i
-		i += 1
-	t = {}
-	i = 0
-	for k in tags.keys():
-		t[k] = i
-		i += 1
-	v["<UNKNOWN>"] = i
-	t["<UNKNOWN>"] = i
-	return v,t
+    vocab = collections.Counter()
+    tags = collections.Counter()
+    for s in sentences:
+        vocab.update(s.words)
+        tags.update(s.pos_tags)
+    v = {}
+    i = 0
+    for k in vocab.keys():
+        v[k] = i
+        i += 1
+    t = {}
+    i = 0
+    for k in tags.keys():
+        t[k] = i
+        i += 1
+    v["<UNKNOWN>"] = i
+    t["<UNKNOWN>"] = i
+    return v,t
 
-def read_unlabeled_penn_treebank( path, low, high ):
-	"""
-	Read sentences from dependency 
-	converted penn treebank files
-	"""
-	sentences = []
-	s = int(low[0:2])
-	e = int(high[0:2])
-	sentences = []
-
-	while( s <= e ):
-		segment = path + str(s).zfill(2)
-		for f in os.listdir(segment):
-			file_path = segment + "/" + f
-			if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
-				sentence_file = open( file_path , "r") 
-				words = []
-				pos_tags = []
-				dependencies = []
-				for line in open( file_path , "r"):
-					if (line != "\n"):
-						word, tag, dependency = line.strip("\n").split("\t")
-						words += [ word ]
-						#pos_tags += [ tag ]
-						#dependencies += [ int(dependency) ]
-					else:
-						# test with only one sentence
-						# if len(sentences) == 1:
-						# 	break
-						# if len(words) >= 6 and len(words) <= 14:
-						sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
-						words = []
-						pos_tags = []
-						dependencies = []
-		s += 1
-	return sentences
 
 def read_penn_treebank( path, low, high ):
-	"""
-	Read sentences from dependency 
-	converted penn treebank files
-	"""
-	sentences = []
-	s = int(low[0:2])
-	e = int(high[0:2])
-	sentences = []
+    """
+    Read sentences from dependency 
+    converted penn treebank files
+    """
+    s = int(low[0:2])
+    e = int(high[0:2])
+    sentences = []
 
-	while( s <= e ):
-		segment = path + str(s).zfill(2)
-		for f in os.listdir(segment):
-			file_path = segment + "/" + f
-			if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
-				sentence_file = open( file_path , "r") 
-				words = []
-				pos_tags = []
-				dependencies = []
-				for line in open( file_path , "r"):
-					if (line != "\n"):
-						word, tag, dependency = line.strip("\n").split("\t")
-						words += [ word ]
-						pos_tags += [ tag ]
-						dependencies += [ int(dependency) ]
-					else:
-						# test with only one sentence
-						# if len(sentences) == 1:
-						# 	break
-						# if len(words) >= 6 and len(words) <= 14:
-						sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
-						words = []
-						pos_tags = []
-						dependencies = []
-		s += 1
-	return sentences
+    while( s <= e ):
+        segment = path + str(s).zfill(2)
+        for f in os.listdir(segment):
+            file_path = segment + "/" + f
+            if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
+                words = []
+                pos_tags = []
+                dependencies = []
+                for line in open( file_path , "r"):
+                    if (line != "\n"):
+                        word, tag, dependency = line.strip("\n").split("\t")
+                        words += [ word ]
+                        pos_tags += [ tag ]
+                        dependencies += [ int(dependency) ]
+                    else:
+                        sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
+                        words = []
+                        pos_tags = []
+                        dependencies = []
+        s += 1
+    return sentences
+
+def read_test_penn_treebank( path, low, high ):
+    """
+    Read sentences from dependency 
+    converted and stanford tagged penn treebank files
+    """
+    s = int(low[0:2])
+    e = int(high[0:2])
+    sentences = []
+
+    while( s <= e ):
+        segment = path + str(s).zfill(2)
+        for f in os.listdir(segment):
+            file_path = segment + "/" + f
+            if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
+                words = []
+                pos_tags = []
+                dependencies = []
+                for line in open( file_path , "r"):
+                    if (line != "\n"):
+                        word, tag, pos_tag, dependency = line.strip("\n").split("\t")
+                        words += [ word ]
+                        tags += [ tag ]
+                        pos_tags += [ pos_tag ]
+                        dependencies += [ int(dependency) ]
+                    else:
+                        # test with only one sentence
+                        # if len(sentences) == 1:
+                        #   break
+                        # if len(words) >= 6 and len(words) <= 14:
+                        sentences += [sentence.StanfordParsedSentence( words, tags, dependencies )]
+                        words = []
+                        tags = []
+                        pos_tags = []
+                        dependencies = []
+        s += 1
+    return sentences
+
+
+def tag_penn_treebank( path, low, high, path2 ):
+    """
+    stan pos penn treebank files
+    """
+    st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
+    s = int(low[0:2])
+    e = int(high[0:2])
+    sentences = []
+
+    while( s <= e ):
+        segment = path + str(s).zfill(2)
+        store_segment = path2 + str(s).zfill(2)
+        for f in os.listdir(segment):
+            if not os.path.exists( store_segment ):
+                os.makedirs( store_segment )
+
+            # file path for reading and writing
+            file_path = segment + "/" + f
+            store_file_path = store_segment + "/" + f
+
+            if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
+                words = []
+                pos_tags = []
+                dependencies = []
+                tagged_file = open( store_file_path,"w" )
+                for line in open( file_path ,"r"):
+                    if (line != "\n"):
+                        word, tag, dependency = line.strip("\n").split("\t")
+                        words += [ word ]
+                        pos_tags += [ tag ]
+                        dependencies += [ int(dependency) ]
+                    else:
+                        word_tag_pairs = st.tag(words)
+                        tags = [j for i,j in word_tag_pairs]
+                        for i,w in enumerate(words):
+                            tagged_file.write( "\t".join([w, tags[i], pos_tags[i], str(dependencies[i])]) + "\n" )
+                        
+                        tagged_file.write("\n")
+                        sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
+                        words = []
+                        pos_tags = []
+                        dependencies = []
+                tagged_file.close()
+        s += 1
+    return sentences
+
 
 @profile
 def main():
-	DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/wsj_parsed/"
-	# Read train sentences from penn treebank for the given sections with labels
-	logging.info("Reading training data")
-	training_sentences = read_penn_treebank(DATA_PATH, "0000", "2199")
-	# Read validate sentences from penn treebank for the given sections without labels
-	# valdation_sentences = read_penn_treebank(DATA_PATH, "0100", "0101")
+    DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/wsj_parsed/"
+    ST_DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/st_tagged/"
+    # Read train sentences from penn treebank for the given sections with labels
+    logging.info("Reading training data")
+    training_sentences = read_penn_treebank(DATA_PATH, "0000", "2199")
+    # Read validate sentences from penn treebank for the given sections without labels
+    valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "0000", "2454")
 
-	training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
-	logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
-	
-	# Initialise parser
-	my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
-	# train the data
-	my_parser.train( training_sentences )
-	# my_parser.test ( valdation_sentences )
+    training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
+    # logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
+    
+    # Initialise parser
+    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
+    # train the data
+    my_parser.train( training_sentences )
+    # my_parser.tag( valdation_sentences )
+    my_parser.test ( valdation_sentences )
+    my_parser.evaluate( )
 
 if __name__ == '__main__':
-	main()
-	print_prof_data()
+    main()
+    print_prof_data()

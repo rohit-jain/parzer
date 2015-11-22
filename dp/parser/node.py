@@ -1,10 +1,12 @@
+from sentence import Sentence
+
 class Node(object):
 	"""
 	Node of a tree
 	Can contain any number of children
 	left and right represents the children created due to left and right dependencies respectively
 	"""
-	def __init__(self, lex = None, position = None, pos_tag = None, dependency = None, left = [], right = []):
+	def __init__(self, lex = None, position = None, pos_tag = None, dependency = -1, left = [], right = []):
 		self.lex = lex
 		self.position = position
 		self.pos_tag = pos_tag
@@ -13,10 +15,30 @@ class Node(object):
 		self.right = right
 
 	def insert_right(self, child):
+		child.dependency = self.position
 		self.right = self.right + [child]
 
 	def insert_left(self, child):
+		child.dependency = self.position
 		self.left = self.left + [child]
+
+	def match(self, gold_sentence):
+		correct_roots = 0
+		position = self.position
+		dep = self.dependency
+		if( gold_sentence.dependency[position] == dep ):
+			correct_roots += 1
+
+		if len(self.right) > 0:
+			for r in self.right:
+				correct_roots += r.match(gold_sentence)
+
+
+		if len(self.left) > 0:
+			for l in self.left:
+				correct_roots += l.match(gold_sentence)
+
+		return correct_roots
 
 	def __str__(self):
 		temp_left = []
