@@ -11,6 +11,8 @@ from collections import Counter
 LEFT = 0
 SHIFT = 1
 RIGHT = 2
+LEFT_CONTEXT = 2
+RIGHT_CONTEXT = 2
 
 class Parser(object):
 	"""
@@ -40,7 +42,7 @@ class SVMParser(Parser):
 		self.clf = {}
 		# pickle.load( open( "svm2.p", "rb" ) )
 		self.actions = Counter()
-		self.N_FEATURES = (3 * len(self.vocab)) + (3 * len(self.tags))
+		self.N_FEATURES =  (LEFT_CONTEXT + 2 + RIGHT_CONTEXT) * ( (3 * len(self.vocab)) + (3 * len(self.tags)) )
 		
 
 	def complete_subtree(self, trees, child):
@@ -71,7 +73,7 @@ class SVMParser(Parser):
 			# action_array = [SHIFT, LEFT, RIGHT]
 			# random.shuffle(action_array)
 			action_array = [i[0] for i in self.actions.most_common(1)]
-			print action_array
+			# print action_array
 		return action_array[0]
 
 
@@ -89,40 +91,53 @@ class SVMParser(Parser):
 			trees.remove(b)
 		return trees
 
-	def extract_features(self, trees, i):
-		target_node = trees[i]
-
+	def lex_feature( self, node, offset ):
 		lex_index = self.vocab[("<UNKNOWN>")]
-		left_lex_index = len(self.vocab) + self.vocab[("<UNKNOWN>")]
-		right_lex_index = 2*len(self.vocab) + self.vocab[("<UNKNOWN>")]
+		if ((node.lex) in self.vocab):
+			lex_index = self.vocab[(node.lex)]
+		return lex_index + offset
 
-		tag_index = 3*len(self.vocab) + self.tags[("<UNKNOWN>")]
-		left_tag_index = 3*len(self.vocab) + len(self.tags) + self.tags[("<UNKNOWN>")]
-		right_tag_index = 3*len(self.vocab) + 2*len(self.tags) + self.tags[("<UNKNOWN>")]
-		
-		if ((target_node.lex) in self.vocab):
-			lex_index = self.vocab[(target_node.lex)]
+	def pos_feature( self, node, offset ):
+		tag_index = self.tags[("<UNKNOWN>")]
+		if ( node.pos_tag in self.tags):
+			tag_index = self.tags[(node.pos_tag)]
+		return tag_index + offset
 
-		if ( target_node.pos_tag in self.tags):
-			tag_index = 3*len(self.vocab) + self.tags[(target_node.pos_tag)]
+	def child_lex( self, children, offset ):
+		lex_indices = []
+		for child in children:
+			lex_indices += [self.lex_feature( child,offset )]
+		return lex_indices
+
+	def child_pos( self, children, offset ):
+		pos_indices = []
+		for child in children:
+			pos_indices += [self.pos_feature( child,offset )]
+		return pos_indices
 
 
-		if( i!= 0 ):
-			left_target_node = trees[i-1]
-			if ((left_target_node.lex) in self.vocab):
-				left_lex_index = len(self.vocab) + self.vocab[(left_target_node.lex)]
-			if ( left_target_node.pos_tag in self.tags):
-				left_tag_index = 3*len(self.vocab) + len(self.tags) + self.tags[(left_target_node.pos_tag)]
+	def node_features( self, target_node, offset ):
+		v = len(self.vocab)
+		t = len(self.tags)
+		lex = [self.lex_feature( target_node,0 ) + offset]
+		pos = [self.pos_feature( target_node,v ) + offset]
+		ch_l_lex = [i+offset for i in self.child_lex( target_node.left,v+t ) ]
+		ch_l_pos = [i+offset for i in self.child_pos( target_node.left,2*v+t ) ]
+		ch_r_lex = [i+offset for i in self.child_lex( target_node.right,(2*v)+(2*t) ) ]
+		ch_r_pos = [i+offset for i in self.child_pos( target_node.right,(3*v)+(2*t) ) ]
+		return lex + pos + ch_l_lex + ch_l_pos + ch_r_lex + ch_r_pos
 
-		if( i < (len(trees) - 1) ):
-			right_target_node = trees[i+1]
-			if ((right_target_node.lex) in self.vocab):
-				right_lex_index = 2*len(self.vocab) + self.vocab[(right_target_node.lex)]
-			if ( right_target_node.pos_tag in self.tags):
-				right_tag_index = 3*len(self.vocab) + 2*len(self.tags) + self.tags[(right_target_node.pos_tag)]
-			
 
-		return [lex_index, tag_index, left_lex_index, left_tag_index, right_lex_index, right_tag_index]
+	def extract_features(self, trees, i, l, r):
+		window_feature_size = (3 * len(self.vocab)) + (3 * len(self.tags))
+		features = []
+		offset = 0
+		for w in range(i-l,(i+1+r+1)):
+			if( w>= 0) and ( w< len(trees)):
+				target_node = trees[w]
+				features += self.node_features( target_node,offset*window_feature_size )
+			offset += 1
+		return features
 
 	def get_pos(self, trees, i):
 		target_node = trees[i]
@@ -153,7 +168,7 @@ class SVMParser(Parser):
 					tree_pos_tag = self.get_pos(trees, i)
 					
 					# extract features
-					extracted_features = self.extract_features(trees, i)
+					extracted_features = self.extract_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT)
 					# print (extracted_features)
 
 					# estimate the action to be taken for i, i+ 1 target  nodes
@@ -182,10 +197,8 @@ class SVMParser(Parser):
 			print self.N_FEATURES
 
 			for i in range( 0, len(train_x[lp]) ):
-				lex_index, tag_index, left_lex_index, left_tag_index, right_lex_index, right_tag_index = train_x[lp][i]
-				temp_features[ i,lex_index ], temp_features[ i,tag_index ] = True, True
-				temp_features[ i,left_lex_index ], temp_features[ i,left_tag_index ] = True, True
-				temp_features[ i,right_lex_index ], temp_features[ i,right_tag_index ] = True, True
+				for k in train_x[lp][i]:
+					temp_features[ i,k ] = True
 
 			features[lp] = temp_features.tocsr()
 
@@ -194,12 +207,13 @@ class SVMParser(Parser):
 			for i in train_y[lp]:
 				n_classes.add(i)
 			if( len(n_classes) > 1 ):
-				clf[lp] = svm.SVC(kernel='poly', degree=2)
+				# clf[lp] = svm.SVC(kernel='poly', degree=2)
+				clf[lp] = svm.LinearSVC()
 				clf[lp].fit(features[lp], train_y[lp])
 
 		self.clf = clf
 		print "pickling"
-		pickle.dump( clf , open( "svm2.p", "wb" ) )
+		pickle.dump( clf , open( "LinearSVC.p", "wb" ) )
 		print "pickling done"
 
 	def test(self, sentences):
@@ -221,7 +235,7 @@ class SVMParser(Parser):
 					i = 0
 				else:					
 					# extract features
-					extracted_features = self.extract_features(trees, i)
+					extracted_features = self.extract_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT)
 
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_action(trees, i, extracted_features)
@@ -257,6 +271,7 @@ class SVMParser(Parser):
 
 		print correct_roots
 		print correct_parents
+		print total_parents
 		print complete_parses
 		print total_sentences
 		print "root accuracy: " + str(correct_roots/total_sentences)
