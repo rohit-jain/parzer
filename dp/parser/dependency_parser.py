@@ -40,8 +40,10 @@ class SVMParser(Parser):
 		self.tags = tags
 		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
 		self.clf = {}
+		self.loaded = False
 		if load == True:
-			self.clf = pickle.load( open( "LinearSVC.p", "rb" ) )
+			self.loaded = True
+			self.clf = pickle.load( open( "svm_focus.p", "rb" ) )
 		self.actions = Counter()
 		self.target_feature_size = (3 * len(self.vocab)) + (3 * len(self.tags))
 		self.context_feature_size = ( len(self.vocab) + len(self.tags) )
@@ -73,6 +75,7 @@ class SVMParser(Parser):
 		if tree_pos_tag in self.clf:
 			action_array = self.clf[tree_pos_tag].predict( temp_features )
 		else:
+			print "guess"
 			action_array = [SHIFT, LEFT, RIGHT]
 		return action_array[0]
 
@@ -85,11 +88,19 @@ class SVMParser(Parser):
 			b.insert_right(a)
 			trees[position + 1] = b
 			trees.remove(a)
+			if position == 0:
+				position = 1
+			return position-1, trees
+
 		elif action == LEFT:
 			a.insert_left(b)
 			trees[position] = a
 			trees.remove(b)
-		return trees
+			if position == 0:
+				position = 1
+
+			return position-1, trees
+		return position+1, trees
 
 	def lex_feature( self, node, offset ):
 		lex_index = self.vocab[("<UNKNOWN>")]
@@ -151,6 +162,8 @@ class SVMParser(Parser):
 		return target_node.pos_tag
 
 	def train(self, sentences):
+		if(self.loaded):
+			return
 		m = len(sentences)
 		print m
 		train_x = {}
@@ -190,12 +203,11 @@ class SVMParser(Parser):
 						train_x[tree_pos_tag] = [extracted_features]
 						train_y[tree_pos_tag] = [y]
 
+					i, trees = self.take_action(trees, i ,y)
+
 					# execute the action and modify the trees
 					if y!= SHIFT:
-						trees = self.take_action(trees, i ,y)
 						no_construction = False
-					else:
-						i += 1
 
 		for lp in train_x:
 			print lp
@@ -214,18 +226,19 @@ class SVMParser(Parser):
 			for i in train_y[lp]:
 				n_classes.add(i)
 			if( len(n_classes) > 1 ):
-				# clf[lp] = svm.SVC(kernel='poly', degree=2)
-				clf[lp] = svm.LinearSVC()
+				clf[lp] = svm.SVC(kernel='poly', degree=2)
+				# clf[lp] = svm.LinearSVC()
 				clf[lp].fit(features[lp], train_y[lp])
 
 		self.clf = clf
 		print "pickling"
-		pickle.dump( clf , open( "LinearSVC.p", "wb" ) )
+		pickle.dump( clf , open( "svm_focus.p", "wb" ) )
 		print "pickling done"
 
 	def test(self, sentences):
 		test_sentences = []
 		inferred_trees = []
+		total = 0
 		for s in sentences:
 			test_sentences += [sentence.Sentence( s.words, s.pos_tags )]
 
@@ -234,7 +247,7 @@ class SVMParser(Parser):
 			i = 0
 			no_construction = False
 			while ( len(trees) > 0 ):
-				if i == len(trees) - 1:
+				if i == (len(trees) - 1):
 					if no_construction == True:
 						break;
 					# if we reach the end start from the beginning
@@ -246,13 +259,14 @@ class SVMParser(Parser):
 
 					# estimate the action to be taken for i, i+ 1 target  nodes
 					y = self.estimate_action(trees, i, extracted_features)
+					i, trees = self.take_action(trees, i ,y)
 					# execute the action and modify the trees
 					if y!= SHIFT:
-						trees = self.take_action(trees, i ,y)
 						no_construction = False
-					else:
-						i += 1
+			if(len(trees) == 1):
+				total+=1
 			inferred_trees += [trees]
+		print total
 		return inferred_trees
 
 
@@ -268,12 +282,14 @@ class SVMParser(Parser):
 			total_parents += (len(s.words) - 1)
 
 			if(len(it) == 1):
-				complete_parses += 1
+				if( s.dependency[it[0].position] == -1 ):
+					correct_roots += 1
+				if it[0].match_all(s):
+					complete_parses += 1
+
 
 			for t in it:
 				correct_parents += t.match(s)
-				if( s.dependency[t.position] == -1 ):
-					correct_roots += 1
 
 
 		print correct_roots

@@ -201,13 +201,13 @@ def main():
     ST_DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/st_tagged/"
     # Read train sentences from penn treebank for the given sections with labels
     logging.info("Reading training data")
-    training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
+    training_sentences = read_penn_treebank(DATA_PATH, "0200", "2099")
 
     # Read validate sentences from penn treebank for the given sections without labels
-    # valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
+    valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
 
     training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
-    logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
+    logging.info("validation sentences: "+ str(len(valdation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
     
     # # Initialise parser
     my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=False)

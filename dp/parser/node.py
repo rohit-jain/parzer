@@ -20,6 +20,13 @@ class Node(object):
 		child.dependency = self.position
 		self.left = self.left + [child]
 
+	def match_all(self, gold_sentence):
+		correct_roots = self.match(gold_sentence)
+		if( correct_roots == len(gold_sentence.words)):
+			return True
+		else:
+			return False
+
 	def match(self, gold_sentence):
 		correct_roots = 0
 		position = self.position
