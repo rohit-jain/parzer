@@ -6,6 +6,7 @@ import collections
 import time
 from nltk.tag import StanfordPOSTagger
 from functools import wraps
+from sets import Set
 
 PROF_DATA = {}
 LOG_FILENAME = 'logging.out'
@@ -60,6 +61,21 @@ def extract_vocabulary_tags(sentences):
     v["<UNKNOWN>"] = i
     t["<UNKNOWN>"] = i
     return v,t
+
+def extract_position_vocab_tags( sentences ):
+    l = 2
+    r = 4
+    vocab = {0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[]}
+    for s in sentences:
+        words = s.words
+        for i in range(0,len(words)):
+            for k,w in enumerate(range(i-l, i+1+r+1)):
+                if( w>= 0) and ( w< len(words)):
+                    vocab[k] += [words[w]]
+    for k in vocab:
+        print "======"
+        vocab[k] = list(Set(vocab[k]))
+        print len(vocab[k])
 
 
 def read_penn_treebank( path, low, high ):
@@ -186,19 +202,21 @@ def main():
     # Read train sentences from penn treebank for the given sections with labels
     logging.info("Reading training data")
     training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
+
     # Read validate sentences from penn treebank for the given sections without labels
-    valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
+    # valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
 
     training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
     logging.info("Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
     
-    # Initialise parser
-    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags)
-    # train the data
-    logging.info("train")
+    # # Initialise parser
+    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=False)
+    # # train the data
+    # logging.info("train")
     my_parser.train( training_sentences )
     # my_parser.tag( valdation_sentences )
-    print "infer"
+    # print "infer"
+    # print len(valdation_sentences)
     inferred_trees = my_parser.test ( valdation_sentences )
     my_parser.evaluate( inferred_trees, valdation_sentences )
 

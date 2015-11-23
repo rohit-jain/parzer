@@ -12,7 +12,7 @@ LEFT = 0
 SHIFT = 1
 RIGHT = 2
 LEFT_CONTEXT = 2
-RIGHT_CONTEXT = 2
+RIGHT_CONTEXT = 4
 
 class Parser(object):
 	"""
@@ -34,15 +34,18 @@ class SVMParser(Parser):
 	"""
 	Dependency parser based on yamada et al ( 2003 )
 	"""
-	def __init__(self, vocab, tags):
+	def __init__(self, vocab, tags, load=False):
 		Parser.__init__(self)
 		self.vocab = vocab
 		self.tags = tags
 		self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
 		self.clf = {}
-		# pickle.load( open( "svm2.p", "rb" ) )
+		if load == True:
+			self.clf = pickle.load( open( "LinearSVC.p", "rb" ) )
 		self.actions = Counter()
-		self.N_FEATURES =  (LEFT_CONTEXT + 2 + RIGHT_CONTEXT) * ( (3 * len(self.vocab)) + (3 * len(self.tags)) )
+		self.target_feature_size = (3 * len(self.vocab)) + (3 * len(self.tags))
+		self.context_feature_size = ( len(self.vocab) + len(self.tags) )
+		self.N_FEATURES =  (LEFT_CONTEXT + RIGHT_CONTEXT) * self.context_feature_size + 2 * self.target_feature_size
 		
 
 	def complete_subtree(self, trees, child):
@@ -70,10 +73,7 @@ class SVMParser(Parser):
 		if tree_pos_tag in self.clf:
 			action_array = self.clf[tree_pos_tag].predict( temp_features )
 		else:
-			# action_array = [SHIFT, LEFT, RIGHT]
-			# random.shuffle(action_array)
-			action_array = [i[0] for i in self.actions.most_common(1)]
-			# print action_array
+			action_array = [SHIFT, LEFT, RIGHT]
 		return action_array[0]
 
 
@@ -116,27 +116,34 @@ class SVMParser(Parser):
 		return pos_indices
 
 
-	def node_features( self, target_node, offset ):
+	def node_features( self, target_node, offset, child_features=False ):
 		v = len(self.vocab)
 		t = len(self.tags)
 		lex = [self.lex_feature( target_node,0 ) + offset]
 		pos = [self.pos_feature( target_node,v ) + offset]
-		ch_l_lex = [i+offset for i in self.child_lex( target_node.left,v+t ) ]
-		ch_l_pos = [i+offset for i in self.child_pos( target_node.left,2*v+t ) ]
-		ch_r_lex = [i+offset for i in self.child_lex( target_node.right,(2*v)+(2*t) ) ]
-		ch_r_pos = [i+offset for i in self.child_pos( target_node.right,(3*v)+(2*t) ) ]
-		return lex + pos + ch_l_lex + ch_l_pos + ch_r_lex + ch_r_pos
+		if child_features == True:
+			ch_l_lex = [i+offset for i in self.child_lex( target_node.left,v+t ) ]
+			ch_l_pos = [i+offset for i in self.child_pos( target_node.left,2*v+t ) ]
+			ch_r_lex = [i+offset for i in self.child_lex( target_node.right,(2*v)+(2*t) ) ]
+			ch_r_pos = [i+offset for i in self.child_pos( target_node.right,(3*v)+(2*t) ) ]
+			return lex + pos + ch_l_lex + ch_l_pos + ch_r_lex + ch_r_pos
+		return lex + pos
 
 
 	def extract_features(self, trees, i, l, r):
-		window_feature_size = (3 * len(self.vocab)) + (3 * len(self.tags))
 		features = []
-		offset = 0
-		for w in range(i-l,(i+1+r+1)):
+		for k,w in enumerate(range(i-l,(i+1+r+1))):
 			if( w>= 0) and ( w< len(trees)):
 				target_node = trees[w]
-				features += self.node_features( target_node,offset*window_feature_size )
-			offset += 1
+				if ( k<l ):
+					features += self.node_features( target_node,k*self.context_feature_size )
+				if ( k>=l and k<l+2 ):
+					target_offset = 2*self.context_feature_size + (k-l)*self.target_feature_size
+					features += self.node_features( target_node,target_offset,child_features=True )
+				else:
+					target_offset = (2 + k - (l+2) )*self.context_feature_size + 2*self.target_feature_size
+					features += self.node_features( target_node,target_offset*self.context_feature_size )
+		
 		return features
 
 	def get_pos(self, trees, i):
@@ -257,17 +264,17 @@ class SVMParser(Parser):
 		complete_parses = 0
 
 		for i,it in enumerate(inferred_trees):
+			s = gold_sentences[i]
+			total_parents += (len(s.words) - 1)
+
 			if(len(it) == 1):
 				complete_parses += 1
-				s = gold_sentences[i]
-				# print s.words
-				# print s.dependency
-				# print it[0]
-				correct_parents += it[0].match(s)
-				total_parents += (len(s.words) - 1)
 
-				if( s.dependency[it[0].position] == -1 ):
+			for t in it:
+				correct_parents += t.match(s)
+				if( s.dependency[t.position] == -1 ):
 					correct_roots += 1
+
 
 		print correct_roots
 		print correct_parents
