@@ -137,12 +137,12 @@ class SVMParser(Parser):
 				target_node = trees[w]
 				if ( k<l ):
 					features += self.node_features( target_node,k*self.context_feature_size )
-				if ( k>=l and k<l+2 ):
+				elif ( k>=l and k<l+2 ):
 					target_offset = 2*self.context_feature_size + (k-l)*self.target_feature_size
 					features += self.node_features( target_node,target_offset,child_features=True )
 				else:
 					target_offset = (2 + k - (l+2) )*self.context_feature_size + 2*self.target_feature_size
-					features += self.node_features( target_node,target_offset*self.context_feature_size )
+					features += self.node_features( target_node,target_offset )
 		
 		return features
 
