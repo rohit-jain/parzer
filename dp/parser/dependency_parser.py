@@ -7,6 +7,7 @@ import sentence
 import pickle, random
 from sets import Set
 from collections import Counter
+import os
 
 LEFT = 0
 SHIFT = 1
@@ -46,6 +47,8 @@ class SVMParser(Parser):
         self.tags = tags
         self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
         self.clf = {}
+        self.position_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+        self.position_tag = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
         self.loaded = False
         if load == True:
             self.loaded = True
@@ -80,7 +83,14 @@ class SVMParser(Parser):
         for i in extracted_features:
             temp_features[0,i] = True
         if tree_pos_tag in self.clf:
-            action_array = self.clf[tree_pos_tag].predict( temp_features )
+            try:
+                action_array = self.clf[tree_pos_tag].predict( temp_features )
+            except Exception as e:
+                print tree_pos_tag
+                print e
+                print "guess"
+                action_array = [SHIFT, LEFT, RIGHT]
+                return action_array[0]
         else:
             print "guess"
             action_array = [SHIFT, LEFT, RIGHT]
@@ -153,6 +163,8 @@ class SVMParser(Parser):
         for k,w in enumerate(range(i-l,(i+1+r+1))):
             if( w>= 0) and ( w< len(trees)):
                 target_node = trees[w]
+                self.position_vocab[k][target_node.lex] += 1
+                self.position_tag[k][target_node.pos_tag] += 1
                 if ( k<l ):
                     features += self.node_features( target_node,k*self.context_feature_size )
                 elif ( k>=l and k<l+2 ):
@@ -216,6 +228,17 @@ class SVMParser(Parser):
                         no_construction = False
 
         print self.actions
+        all_k = 0
+        all_tag = 0
+        for pi in self.position_tag:
+            l = len(self.position_tag[pi])
+            print pi,l
+            all_tag += l
+        for pi in self.position_vocab:
+            l = len(self.position_vocab[pi])
+            print pi,l
+            all_k += l
+        print all_k
         for lp in train_x:
             print lp
             print len(train_x[lp])
@@ -235,11 +258,13 @@ class SVMParser(Parser):
             if( len(n_classes) > 1 ):
                 clf_file = lp+".p"
                 if os.path.isfile(clf_file):
-                    clf[p] = pickle.load( open( clf_file, "rb" ) )
+                    print "load: "+ clf_file
+                    clf[lp] = pickle.load( open( clf_file, "rb" ) )
                 else:
-                    clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=5120)
+                    clf[lp] = svm.SVC(kernel='poly', degree=1, cache_size=5120)
                     # clf[lp] = svm.LinearSVC()
                     clf[lp].fit(features[lp], train_y[lp])
+                    print "pickle: "+ clf_file
                     pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
 
 

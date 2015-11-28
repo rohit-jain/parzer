@@ -54,12 +54,13 @@ def extract_vocabulary_tags(sentences):
         if vocab[k] > 1:
             v[k] = i
             i += 1
+    v["<UNKNOWN>"] = i
+
     t = {}
     i = 0
     for k in tags.keys():
         t[k] = i
         i += 1
-    v["<UNKNOWN>"] = i
     t["<UNKNOWN>"] = i
     return v,t
 
@@ -211,7 +212,7 @@ def main():
     logging.info("validation sentences: "+ str(len(validation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
     
     # # Initialise parser
-    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=True)
+    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=False)
     # # train the data
     # logging.info("train")
     my_parser.train( training_sentences )
