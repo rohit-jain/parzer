@@ -2,7 +2,7 @@ from __future__ import division
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
 from sklearn import svm
-from nltk.tag import StanfordPOSTagger
+# from nltk.tag import StanfordPOSTagger
 import sentence
 import pickle, random
 from sets import Set
@@ -38,7 +38,7 @@ class SVMParser(Parser):
         Parser.__init__(self)
         self.vocab = vocab
         self.tags = tags
-        self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
+        self.st = {}#StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
         self.clf = {}
         self.loaded = False
         if load == True:
@@ -229,8 +229,8 @@ class SVMParser(Parser):
                 for i in train_y[lp]:
                     n_classes.add(i)
                 if( len(n_classes) > 1 ):
-                    # clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=5120)
-                    clf[lp] = svm.LinearSVC()
+                    clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=8192)
+                    # clf[lp] = svm.LinearSVC()
                     clf[lp].fit(features[lp], train_y[lp])
                     pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
                     clf[lp] = None
