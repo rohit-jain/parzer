@@ -2,7 +2,7 @@ from __future__ import division
 import numpy as np
 from scipy.sparse import csr_matrix, lil_matrix
 from sklearn import svm
-# from nltk.tag import StanfordPOSTagger
+from nltk.tag import StanfordPOSTagger
 import sentence
 import pickle, random
 from sets import Set
@@ -13,6 +13,12 @@ SHIFT = 1
 RIGHT = 2
 LEFT_CONTEXT = 2
 RIGHT_CONTEXT = 4
+
+def counter_ratio(n,d):
+    r = dict()
+    for i in a:
+        r[i] = n[i]/d[i]
+    return r
 
 class Parser(object):
     """
@@ -38,12 +44,12 @@ class SVMParser(Parser):
         Parser.__init__(self)
         self.vocab = vocab
         self.tags = tags
-        self.st = {}#StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
+        self.st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
         self.clf = {}
         self.loaded = False
         if load == True:
             self.loaded = True
-            self.clf = pickle.load( open( "linear_focus.p", "rb" ) )
+            # self.clf = pickle.load( open( "linear_focus.p", "rb" ) )
         self.actions = Counter()
         self.test_actions = Counter()
         self.target_feature_size = (3 * len(self.vocab)) + (3 * len(self.tags))
@@ -210,33 +216,30 @@ class SVMParser(Parser):
                         no_construction = False
 
         print self.actions
-        for lp in sorted(train_x):
-            #if lp in ['NN','IN']:
-            if len(train_x[lp]) > 80000:
-                print lp
-                print len(train_x[lp])
-                temp_features = lil_matrix((len(train_x[lp]), self.N_FEATURES), dtype = bool)
-                print self.N_FEATURES
+        for lp in train_x:
+            print lp
+            print len(train_x[lp])
+            temp_features = lil_matrix((len(train_x[lp]), self.N_FEATURES), dtype = bool)
+            print self.N_FEATURES
 
-                for i in range( 0, len(train_x[lp]) ):
-                    for k in train_x[lp][i]:
-                        temp_features[ i,k ] = True
+            for i in range( 0, len(train_x[lp]) ):
+                for k in train_x[lp][i]:
+                    temp_features[ i,k ] = True
 
-                features[lp] = temp_features.tocsr()
+            features[lp] = temp_features.tocsr()
 
-                train_x[lp] = None
-                n_classes = Set()
-                for i in train_y[lp]:
-                    n_classes.add(i)
-                if( len(n_classes) > 1 ):
-                    clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=8192)
-                    # clf[lp] = svm.LinearSVC()
-                    clf[lp].fit(features[lp], train_y[lp])
-                    pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
-                    clf[lp] = None
+            train_x[lp] = None
+            n_classes = Set()
+            for i in train_y[lp]:
+                n_classes.add(i)
+            if( len(n_classes) > 1 ):
+                # clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=5120)
+                clf[lp] = svm.LinearSVC()
+                clf[lp].fit(features[lp], train_y[lp])
+                # pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
 
 
-        # self.clf = clf
+        self.clf = clf
         # print "pickling"
         # pickle.dump( clf , open( "svm_focus.p", "wb" ) )
         # print "pickling done"
@@ -283,45 +286,47 @@ class SVMParser(Parser):
 
 
     def evaluate(self, inferred_trees, gold_sentences):
-        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
-        correct_roots = 0
-        correct_parents = 0
-        total_parents = 0
-        total_sentences = len(gold_sentences)
-        complete_parses = 0
-        dependency_accuracy = Counter()
-        total_roots = Counter()
-        result_accuracy = Counter()
+        # Dependency accuracy (DA): The proportion
+        # of non-root words that are assigned the correct
+        # head
 
-        a = Counter()
-        b= Counter()
+        # Root accuracy (RA): The proportion of root
+        # words that are analyzed as such 
+
+        # Complete match (CM): The proportion of
+        # sentences whose unlabeled dependency structure
+        # is completely correct
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
+        root_accuracy_n = Counter()
+        root_accuracy_d = Counter()
+        root_accuracy = dict()
+
+        dep_accuracy_n = Counter()
+        dep_accuracy_d = Counter()
+        dep_accuracy = dict()
+
+        complete_d = 0
+        complete_n = 0
         for i,it in enumerate(inferred_trees):
             s = gold_sentences[i]
-            total_parents += (len(s.words) - 1)
 
             if(len(it) == 1):
-                if( s.dependency[it[0].position] == -1 ):
-                    correct_roots += 1
-                if it[0].match_all(s,a,b):
-                    complete_parses += 1
+                complete_d += 1
+                if it[0].match_all(s):
+                    complete_n += 1
 
-
+                current_root = it[0]
+                if current_root.pos_tag not in PUNCTUATION_TAGS:
+                    root_accuracy_d[current_root.lex] += 1
+                    if( s.dependency[current_root.position] == -1 ):
+                        root_accuracy_n[current_root.lex] += 1
+        
             for t in it:
-                correct_parents += t.match(s, dependency_accuracy, total_roots)
+                t.match_dep(s,dep_accuracy_n,dep_accuracy_d)
 
 
-        print correct_roots
-        print correct_parents
-        print total_parents
-        print complete_parses
-        print total_sentences
-        print len(dependency_accuracy.keys())
-        print len(total_roots.keys())
-        s = 0
-        for k in dependency_accuracy.keys():
-            result_accuracy[k] = dependency_accuracy[k]/total_roots[k]
-            s += result_accuracy[k]
-        pickle.dump( result_accuracy , open( "result", "wb" ) )
-        print "root accuracy: " + str(correct_roots/total_sentences)
-        print "dependency accuracy: " + str(correct_parents/total_parents)
-        print "completion rate: " + str(complete_parses/total_sentences)
+        root_accuracy = counter_ratio(root_accuracy_n,root_accuracy_d)
+        print "root accuracy: " + str(np.sum(root_accuracy_n.values)/np.sum(root_accuracy_d.values())) + "," + str(np.mean(root_accuracy.values()))
+        dep_accuracy = counter_ratio(dep_accuracy_n,dep_accuracy_d)
+        print "dep accuracy: " + str(np.sum(dep_accuracy_n.values)/np.sum(dep_accuracy_d.values())) + "," + str(np.mean(dep_accuracy.values()))
+        print "complete: " + str(complete_n/complete_d)

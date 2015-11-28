@@ -4,7 +4,7 @@ import sentence
 import dependency_parser
 import collections
 import time
-# from nltk.tag import StanfordPOSTagger
+from nltk.tag import StanfordPOSTagger
 from functools import wraps
 from sets import Set
 
@@ -149,6 +149,51 @@ def read_test_penn_treebank( path, low, high ):
     return sentences
 
 
+def tag_penn_treebank( path, low, high, path2 ):
+    """
+    stan pos penn treebank files
+    """
+    st = StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
+    s = int(low[0:2])
+    e = int(high[0:2])
+    sentences = []
+
+    while( s <= e ):
+        segment = path + str(s).zfill(2)
+        store_segment = path2 + str(s).zfill(2)
+        for f in os.listdir(segment):
+            if not os.path.exists( store_segment ):
+                os.makedirs( store_segment )
+
+            # file path for reading and writing
+            file_path = segment + "/" + f
+            store_file_path = store_segment + "/" + f
+
+            if (not f.startswith('.')) and os.path.isfile( file_path ) and (int(f[-4:]) <= int(high)):
+                words = []
+                pos_tags = []
+                dependencies = []
+                tagged_file = open( store_file_path,"w" )
+                for line in open( file_path ,"r"):
+                    if (line != "\n"):
+                        word, tag, dependency = line.strip("\n").split("\t")
+                        words += [ word ]
+                        pos_tags += [ tag ]
+                        dependencies += [ int(dependency) ]
+                    else:
+                        word_tag_pairs = st.tag(words)
+                        tags = [j for i,j in word_tag_pairs]
+                        for i,w in enumerate(words):
+                            tagged_file.write( "\t".join([w, tags[i], pos_tags[i], str(dependencies[i])]) + "\n" )
+                        
+                        tagged_file.write("\n")
+                        sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
+                        words = []
+                        pos_tags = []
+                        dependencies = []
+                tagged_file.close()
+        s += 1
+    return sentences
 
 
 @profile
@@ -173,8 +218,8 @@ def main():
     # my_parser.tag( validation_sentences )
     # print "infer"
     # print len(validation_sentences)
-    # inferred_trees = my_parser.test ( validation_sentences )
-    # my_parser.evaluate( inferred_trees, validation_sentences )
+    inferred_trees = my_parser.test ( validation_sentences )
+    my_parser.evaluate( inferred_trees, validation_sentences )
 
 if __name__ == '__main__':
     main()
