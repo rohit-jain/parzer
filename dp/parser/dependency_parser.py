@@ -16,7 +16,7 @@ RIGHT_CONTEXT = 4
 
 def counter_ratio(n,d):
     r = dict()
-    for i in a:
+    for i in n:
         r[i] = n[i]/d[i]
     return r
 
@@ -49,7 +49,7 @@ class SVMParser(Parser):
         self.loaded = False
         if load == True:
             self.loaded = True
-            # self.clf = pickle.load( open( "linear_focus.p", "rb" ) )
+            self.clf = pickle.load( open( "linear_focus.p", "rb" ) )
         self.actions = Counter()
         self.test_actions = Counter()
         self.target_feature_size = (3 * len(self.vocab)) + (3 * len(self.tags))
@@ -233,16 +233,20 @@ class SVMParser(Parser):
             for i in train_y[lp]:
                 n_classes.add(i)
             if( len(n_classes) > 1 ):
-                # clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=5120)
-                clf[lp] = svm.LinearSVC()
-                clf[lp].fit(features[lp], train_y[lp])
-                # pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
+                clf_file = lp+".p"
+                if os.path.isfile(clf_file):
+                    clf[p] = pickle.load( open( clf_file, "rb" ) )
+                else:
+                    clf[lp] = svm.SVC(kernel='poly', degree=2, cache_size=5120)
+                    # clf[lp] = svm.LinearSVC()
+                    clf[lp].fit(features[lp], train_y[lp])
+                    pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
 
 
         self.clf = clf
-        # print "pickling"
-        # pickle.dump( clf , open( "svm_focus.p", "wb" ) )
-        # print "pickling done"
+        print "pickling"
+        pickle.dump( clf , open( "linear_focus.p", "wb" ) )
+        print "pickling done"
 
     def test(self, sentences):
         print len(sentences)
@@ -276,9 +280,9 @@ class SVMParser(Parser):
                     self.test_actions[y] += 1
             if(len(trees) == 1):
                 total+=1
-                print total
+                # print total
             inferred_trees += [trees]
-            print len(inferred_trees)
+            # print len(inferred_trees)
 
         print self.test_actions
         print total
@@ -307,26 +311,39 @@ class SVMParser(Parser):
 
         complete_d = 0
         complete_n = 0
+        
+        total_sentences = len(gold_sentences)
         for i,it in enumerate(inferred_trees):
             s = gold_sentences[i]
 
             if(len(it) == 1):
                 complete_d += 1
+                current_root = it[0]
+                root_accuracy_d[current_root.lex] += 1
+
                 if it[0].match_all(s):
                     complete_n += 1
 
-                current_root = it[0]
                 if current_root.pos_tag not in PUNCTUATION_TAGS:
-                    root_accuracy_d[current_root.lex] += 1
                     if( s.dependency[current_root.position] == -1 ):
                         root_accuracy_n[current_root.lex] += 1
-        
+           
+            else:
+                for t in it:
+                    current_root = t
+                    root_accuracy_d[current_root.lex] += 1
+                    if current_root.pos_tag not in PUNCTUATION_TAGS:
+                        if( s.dependency[current_root.position] == -1 ):
+                            root_accuracy_n[current_root.lex] += 1
+
+
             for t in it:
                 t.match_dep(s,dep_accuracy_n,dep_accuracy_d)
 
 
+        # 3rd w else, 1st without else
         root_accuracy = counter_ratio(root_accuracy_n,root_accuracy_d)
-        print "root accuracy: " + str(np.sum(root_accuracy_n.values)/np.sum(root_accuracy_d.values())) + "," + str(np.mean(root_accuracy.values()))
+        print "root accuracy: " + str(np.sum(root_accuracy_n.values())/np.sum(root_accuracy_d.values())) + "," + str(np.mean(root_accuracy.values())) + "," + str(np.sum(root_accuracy_n.values())/total_sentences)
         dep_accuracy = counter_ratio(dep_accuracy_n,dep_accuracy_d)
-        print "dep accuracy: " + str(np.sum(dep_accuracy_n.values)/np.sum(dep_accuracy_d.values())) + "," + str(np.mean(dep_accuracy.values()))
+        print "dep accuracy: " + str(np.sum(dep_accuracy_n.values())/np.sum(dep_accuracy_d.values())) + "," + str(np.mean(dep_accuracy.values()))
         print "complete: " + str(complete_n/complete_d)

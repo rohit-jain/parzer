@@ -28,10 +28,12 @@ class Node(object):
             return False
 
     def match(self, gold_sentence):
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
         correct_roots = 0
         position = self.position
         dep = self.dependency
-        if( gold_sentence.dependency[position] == dep ):
+        tag = gold_sentence.pos_tags[position]
+        if(( gold_sentence.dependency[position] == dep ) or (tag in PUNCTUATION_TAGS)):
             correct_roots += 1
 
         if len(self.right) > 0:
@@ -60,12 +62,12 @@ class Node(object):
 
         if len(self.right) > 0:
             for r in self.right:
-                correct_roots += r.match(gold_sentence, result_dict, baseline_dict)
+                correct_roots += r.match_dep(gold_sentence, result_dict, baseline_dict)
 
 
         if len(self.left) > 0:
             for l in self.left:
-                correct_roots += l.match(gold_sentence, result_dict, baseline_dict)
+                correct_roots += l.match_dep(gold_sentence, result_dict, baseline_dict)
 
         return correct_roots
 

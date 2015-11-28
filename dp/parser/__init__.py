@@ -211,7 +211,7 @@ def main():
     logging.info("validation sentences: "+ str(len(validation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
     
     # # Initialise parser
-    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=False)
+    my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=True)
     # # train the data
     # logging.info("train")
     my_parser.train( training_sentences )
