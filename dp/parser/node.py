@@ -20,28 +20,30 @@ class Node(object):
 		child.dependency = self.position
 		self.left = self.left + [child]
 
-	def match_all(self, gold_sentence):
-		correct_roots = self.match(gold_sentence)
+	def match_all(self, gold_sentence, result_dict, baseline_dict):
+		correct_roots = self.match(gold_sentence, result_dict, baseline_dict)
 		if( correct_roots == len(gold_sentence.words)):
 			return True
 		else:
 			return False
 
-	def match(self, gold_sentence):
+	def match(self, gold_sentence, result_dict, baseline_dict):
 		correct_roots = 0
 		position = self.position
 		dep = self.dependency
+		baseline_dict[gold_sentence.words[position]] += 1
 		if( gold_sentence.dependency[position] == dep ):
 			correct_roots += 1
+			result_dict[gold_sentence.words[position]] += 1
 
 		if len(self.right) > 0:
 			for r in self.right:
-				correct_roots += r.match(gold_sentence)
+				correct_roots += r.match(gold_sentence, result_dict, baseline_dict)
 
 
 		if len(self.left) > 0:
 			for l in self.left:
-				correct_roots += l.match(gold_sentence)
+				correct_roots += l.match(gold_sentence, result_dict, baseline_dict)
 
 		return correct_roots
 

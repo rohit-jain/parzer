@@ -51,8 +51,9 @@ def extract_vocabulary_tags(sentences):
     v = {}
     i = 0
     for k in vocab.keys():
-        v[k] = i
-        i += 1
+        if vocab[k] > 1:
+            v[k] = i
+            i += 1
     t = {}
     i = 0
     for k in tags.keys():
@@ -201,24 +202,24 @@ def main():
     ST_DATA_PATH = "/Users/rohitjain/github/nlp/dp/data/st_tagged/"
     # Read train sentences from penn treebank for the given sections with labels
     logging.info("Reading training data")
-    training_sentences = read_penn_treebank(DATA_PATH, "0200", "2099")
+    training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
 
     # Read validate sentences from penn treebank for the given sections without labels
-    valdation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
+    validation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
 
     training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
-    logging.info("validation sentences: "+ str(len(valdation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
+    logging.info("validation sentences: "+ str(len(validation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
     
     # # Initialise parser
     my_parser = dependency_parser.SVMParser(training_vocabulary, training_tags, load=False)
     # # train the data
     # logging.info("train")
     my_parser.train( training_sentences )
-    # my_parser.tag( valdation_sentences )
+    # my_parser.tag( validation_sentences )
     # print "infer"
-    # print len(valdation_sentences)
-    inferred_trees = my_parser.test ( valdation_sentences )
-    my_parser.evaluate( inferred_trees, valdation_sentences )
+    # print len(validation_sentences)
+    # inferred_trees = my_parser.test ( validation_sentences )
+    # my_parser.evaluate( inferred_trees, validation_sentences )
 
 if __name__ == '__main__':
     main()
