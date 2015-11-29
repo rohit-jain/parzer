@@ -8,6 +8,7 @@ import pickle, random
 from sets import Set
 from collections import Counter
 import os
+from sklearn.grid_search import GridSearchCV
 
 LEFT = 0
 SHIFT = 1
@@ -20,6 +21,26 @@ def counter_ratio(n,d):
     for i in n:
         r[i] = n[i]/d[i]
     return r
+
+def convert_to_features(d):
+    tpt = {}
+    for pi in d:
+        tpt[pi] = {}
+        i = 0
+        for token in d[pi]:
+            tpt[pi][token] = i
+            i += 1
+        tpt[pi]["<UNKNOWN>"] = i
+    return tpt
+
+def count_features(d):
+    all_d = 0
+    for pi in d:
+        l = len(d[pi])
+        print pi,l
+        all_d += l
+    return all_d
+
 
 class Parser(object):
     """
@@ -47,6 +68,11 @@ class SVMParser(Parser):
         self.clf = {}
         self.position_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
         self.position_tag = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+        self.ch_l_tag = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+        self.ch_r_tag = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+        self.ch_l_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+        self.ch_r_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+
         self.loaded = False
         if load == True:
             self.loaded = True
@@ -133,11 +159,19 @@ class SVMParser(Parser):
                 tag_index = tag[(node.pos_tag)]
         return tag_index + offset
 
-    # def child_lex( self, children, offset ):
-    #     lex_indices = []
-    #     for child in children:
-    #         lex_indices += [self.lex_feature( child,offset )]
-    #     return lex_indices
+    def child_feature( self, position, node, offset, family ):
+        vocab = family
+        lex_index = vocab[("<UNKNOWN>")]
+        if (node!=[]):
+            if ((node.lex) in vocab):
+                lex_index = vocab[(node.lex)]
+        return lex_index + offset
+
+    def child_lex( self, position, children, offset, family ):
+        lex_indices = []
+        for child in children:
+            lex_indices += [self.child_feature( position,child,offset,family )]
+        return lex_indices
 
     # def child_pos( self, children, offset ):
     #     pos_indices = []
@@ -159,21 +193,21 @@ class SVMParser(Parser):
     #         return lex + pos + ch_l_lex + ch_l_pos + ch_r_lex + ch_r_pos
     #     return lex + pos
 
-    def extract_mat_features(self, feature_nodes):
-        features = []
-        print len(feature_nodes)
-        for fn in feature_nodes:
-            # print fn.keys()
-            temp_features = []
-            offset = 0
-            for position in fn:
-                temp_lex = self.lex_feature(position, fn[position], offset)
-                offset += len(self.position_vocab[position])
-                temp_tag = self.pos_feature(position, fn[position], offset)
-                offset += len(self.position_tag[position])
-                temp_features += [ temp_lex, temp_tag ]
-            features += [temp_features]
-        return features
+    # def extract_mat_features(self, feature_nodes):
+    #     features = []
+    #     print len(feature_nodes)
+    #     for fn in feature_nodes:
+    #         # print fn.keys()
+    #         temp_features = []
+    #         offset = 0
+    #         for position in fn:
+    #             temp_lex = self.lex_feature(position, fn[position], offset)
+    #             offset += len(self.position_vocab[position])
+    #             temp_tag = self.pos_feature(position, fn[position], offset)
+    #             offset += len(self.position_tag[position])
+    #             temp_features += [ temp_lex, temp_tag ]
+    #         features += [temp_features]
+    #     return features
 
     def extract_test_features(self, trees, i, l, r):
         features = []
@@ -182,23 +216,36 @@ class SVMParser(Parser):
         for k,w in enumerate(range(i-l,(i+1+r+1))):
             if( w>= 0) and ( w< len(trees)):
                 target_node = trees[w]
-                temp_lex = self.lex_feature(k, target_node, offset)
+                temp_lex = [self.lex_feature(k, target_node, offset)]
                 offset += len(self.position_vocab[k])
-                temp_tag = self.pos_feature(k, target_node, offset)
+                temp_tag = [self.pos_feature(k, target_node, offset)]
                 offset += len(self.position_tag[k])
-                features += [ temp_lex, temp_tag ]
+                temp_ch_l_lex = self.child_lex(k, target_node.left, offset, self.ch_l_vocab[k])
+                offset += len(self.ch_l_vocab[k])
+                temp_ch_l_tag = self.child_lex(k, target_node.left, offset, self.ch_l_tag[k])
+                offset += len(self.ch_l_tag[k])
+                temp_ch_r_lex = self.child_lex(k, target_node.right, offset, self.ch_r_vocab[k])
+                offset += len(self.ch_r_vocab[k])
+                temp_ch_r_tag = self.child_lex(k, target_node.right, offset, self.ch_r_tag[k])
+                offset += len(self.ch_r_tag[k])
+
+                features += (temp_lex + temp_tag + temp_ch_r_tag + temp_ch_r_lex + temp_ch_l_tag + temp_ch_l_lex )
         return features
 
 
-    def extract_features(self, trees, i, l, r):
-        features = {0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[]}
-        # features_tag = {0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[]}
+    def build_vocab(self, trees, i, l, r):
         for k,w in enumerate(range(i-l,(i+1+r+1))):
             if( w>= 0) and ( w< len(trees)):
                 target_node = trees[w]
                 self.position_vocab[k][target_node.lex] += 1
                 self.position_tag[k][target_node.pos_tag] += 1
-                features[k] =  target_node
+                for lc in target_node.left:
+                    self.ch_l_vocab[k][lc.lex] += 1
+                    self.ch_l_tag[k][lc.pos_tag] += 1
+                for rc in target_node.right:
+                    self.ch_r_vocab[k][rc.lex] += 1
+                    self.ch_r_tag[k][rc.pos_tag] += 1
+
                 # if ( k<l ):
                 #     features += self.node_features( target_node,k*self.context_feature_size )
                 # elif ( k>=l and k<l+2 ):
@@ -207,8 +254,6 @@ class SVMParser(Parser):
                 # else:
                 #     target_offset = (2 + k - (l+2) )*self.context_feature_size + 2*self.target_feature_size
                 #     features += self.node_features( target_node,target_offset )
-        
-        return features
 
     def get_pos(self, trees, i):
         target_node = trees[i]
@@ -238,8 +283,8 @@ class SVMParser(Parser):
                 else:
                     tree_pos_tag = self.get_pos(trees, i)
                     
-                    # extract features
-                    extracted_features = self.extract_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT)
+                    # build_vocab
+                    self.build_vocab(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT)
 
                     # estimate the action to be taken for i, i+ 1 target  nodes
                     y = self.estimate_train_action(trees, i)
@@ -250,40 +295,14 @@ class SVMParser(Parser):
                         no_construction = False
 
         # convert counter to features
-        tpt = {}
-        for pi in self.position_tag:
-            tpt[pi] = {}
-            i = 0
-            for token in self.position_tag[pi]:
-                tpt[pi][token] = i
-                i += 1
-            tpt[pi]["<UNKNOWN>"] = i
-        
-        tpv = {}
-        for pi in self.position_vocab:
-            tpv[pi] = {}
-            i = 0
-            for token in self.position_vocab[pi]:
-                tpv[pi][token] = i
-                i += 1
-            tpv[pi]["<UNKNOWN>"] = i
+        self.position_tag = convert_to_features(self.position_tag)
+        self.position_vocab = convert_to_features(self.position_vocab)
+        self.ch_l_tag = convert_to_features(self.ch_l_tag)
+        self.ch_r_tag = convert_to_features(self.ch_r_tag)
+        self.ch_l_vocab = convert_to_features(self.ch_l_vocab)
+        self.ch_r_vocab = convert_to_features(self.ch_r_vocab)
 
-        self.position_tag = tpt
-        self.position_vocab = tpv
-
-
-        all_k = 0
-        all_tag = 0
-        for pi in self.position_tag:
-            l = len(self.position_tag[pi])
-            print pi,l
-            all_tag += l
-        for pi in self.position_vocab:
-            l = len(self.position_vocab[pi])
-            print pi,l
-            all_k += l
-
-        self.N_FEATURES = all_k + all_tag # 8 for unknown
+        self.N_FEATURES = count_features(self.position_tag) + count_features(self.position_vocab) + count_features(self.ch_l_tag) + count_features(self.ch_l_vocab) + count_features(self.ch_r_tag) + count_features(self.ch_r_vocab)
         print self.N_FEATURES
 
         # convert dummy to real
@@ -351,16 +370,19 @@ class SVMParser(Parser):
                     print "load: "+ clf_file
                     clf[lp] = pickle.load( open( clf_file, "rb" ) )
                 else:
-                    # clf[lp] = svm.SVC(kernel='poly', degree=1, cache_size=5120)
-                    clf[lp] = svm.LinearSVC()
+                    tuned_parameters = [{'kernel': ['poly'], 'C': [1, 10, 100]}]
+                    clf[lp] = GridSearchCV(svm.SVC(kernel='poly', degree=1, gamma=1, coef0=1, cache_size=5120), tuned_parameters, cv=3, n_jobs=3)
+                    # clf[lp] = svm.SVC(kernel='poly', degree=1, gamma=1, coef0=1, cache_size=5120)
+                    # clf[lp] = svm.LinearSVC()
                     clf[lp].fit(features[lp], train_y[lp])
+                    print(clf[lp].best_params_)
                     print "pickle: "+ clf_file
                     pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
 
 
         self.clf = clf
         print "pickling"
-        pickle.dump( clf , open( "linear_focus.p", "wb" ) )
+        pickle.dump( clf , open( "full_svm.p", "wb" ) )
         print "pickling done"
 
     def test(self, sentences):
