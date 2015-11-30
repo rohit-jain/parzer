@@ -149,57 +149,6 @@ def read_test_penn_treebank( path, low, high ):
         s += 1
     return sentences
 
-def read_test_genia( path ):
-    """
-    Read sentences from dependency 
-    converted and gdep tagged genia files
-    """
-    sentences = []
-
-    words = []
-    pos_tags = []
-    dependencies = []
-    tags = []
-    for line in open( path + "tagged_test", "r"):
-        if (line != "\n"):
-            word, tag, pos_tag, dependency = line.strip("\n").split("\t")
-            words += [ word ]
-            tags += [ tag ]
-            pos_tags += [ pos_tag ]
-            dependencies += [ int(dependency) ]
-        else:
-            sentences += [sentence.ParsedSentence( words, tags, dependencies )]
-            words = []
-            tags = []
-            pos_tags = []
-            dependencies = []
-
-    return sentences
-
-def read_train_genia( path ):
-    """
-    Read sentences from dependency 
-    converted and gdep tagged genia files
-    """
-    sentences = []
-
-    words = []
-    pos_tags = []
-    dependencies = []
-    for line in open( path + "train" , "r"):
-        if (line != "\n"):
-            word, tag, dependency = line.strip("\n").split("\t")
-            words += [ word ]
-            pos_tags += [ tag ]
-            dependencies += [ int(dependency) ]
-        else:
-            sentences += [sentence.ParsedSentence( words, pos_tags, dependencies )]
-            words = []
-            pos_tags = []
-            dependencies = []
-
-    return sentences
-
 
 # def tag_penn_treebank( path, low, high, path2 ):
 #     """
@@ -248,23 +197,17 @@ def read_train_genia( path ):
 #     return sentences
 
 
-
 @profile
 def main():
-    DIR_PATH = os.getcwd()
-    DATA_PATH = DIR_PATH + "/data/wsj_parsed/"
-    ST_DATA_PATH = DIR_PATH + "/data/st_tagged/"
-    GEN_DATA_PATH = DIR_PATH + "/data/genia-dist/division/"
+    DATA_PATH = "/home/ubuntu/nlp/dp/data/wsj_parsed/"
+    ST_DATA_PATH = "/home/ubuntu/nlp/dp/data/st_tagged/"
     # Read train sentences from penn treebank for the given sections with labels
     logging.info("Reading training data")
-    # training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
-    # training_sentences_2 = read_penn_treebank(DATA_PATH, "0200", "2199")
-    genia_training_sentences = read_train_genia(GEN_DATA_PATH)
-    genia_training_sentences_2 = read_train_genia(GEN_DATA_PATH)
+    training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
+    training_sentences_2 = read_penn_treebank(DATA_PATH, "0200", "2199")
 
     # Read validate sentences from penn treebank for the given sections without labels
     validation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
-    genia_validation_sentences = read_test_genia(GEN_DATA_PATH)
 
     # training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
     # logging.info("validation sentences: "+ str(len(validation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
@@ -273,12 +216,12 @@ def main():
     my_parser = dependency_parser.SVMParser(load=False)
     # # train the data
     # logging.info("train")
-    my_parser.train( genia_training_sentences, genia_training_sentences_2 )
+    my_parser.train( training_sentences, training_sentences_2 )
     # my_parser.tag( validation_sentences )
     # print "infer"
     # print len(validation_sentences)
-    inferred_trees = my_parser.test ( genia_validation_sentences )
-    my_parser.evaluate( inferred_trees, genia_validation_sentences )
+    inferred_trees = my_parser.test ( validation_sentences )
+    my_parser.evaluate( inferred_trees, validation_sentences )
 
 if __name__ == '__main__':
     main()

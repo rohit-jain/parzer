@@ -74,15 +74,14 @@ class SVMParser(Parser):
         self.ch_r_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
 
         self.loaded = False
+        if load == True:
+            self.loaded = True
+            self.clf = pickle.load( open( "linear_focus.p", "rb" ) )
         self.actions = Counter()
         self.test_actions = Counter()
         self.target_feature_size = None #(3 * len(self.vocab)) + (3 * len(self.tags))
         self.context_feature_size = None #( len(self.vocab) + len(self.tags) )
         self.N_FEATURES = None #(LEFT_CONTEXT + RIGHT_CONTEXT) * self.context_feature_size + 2 * self.target_feature_size
-        if load == True:
-            self.loaded = True
-            self.clf = pickle.load( open( "svm_focus.p", "rb" ) )
-            self.N_FEATURES = 4242238
         
 
     def complete_subtree(self, trees, child):
@@ -261,6 +260,8 @@ class SVMParser(Parser):
         return target_node.pos_tag
 
     def train(self, sentences, sentences2):
+        if(self.loaded):
+            return
         m = len(sentences)
         print "Train Sentences: " + str(m) + "," + str(len(sentences2))
         train_x = {}
@@ -307,8 +308,6 @@ class SVMParser(Parser):
         # convert dummy to real
         # for pos_tag in dummy_train_x:
         #     train_x[pos_tag] = self.extract_mat_features(dummy_train_x[pos_tag])
-        if(self.loaded):
-            return
 
         for s in sentences2:
             trees = s.get_labeled_trees()
