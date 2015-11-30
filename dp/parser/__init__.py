@@ -257,14 +257,14 @@ def main():
     GEN_DATA_PATH = DIR_PATH + "/data/genia-dist/division/"
     # Read train sentences from penn treebank for the given sections with labels
     logging.info("Reading training data")
-    # training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
-    # training_sentences_2 = read_penn_treebank(DATA_PATH, "0200", "2199")
-    genia_training_sentences = read_train_genia(GEN_DATA_PATH)
-    genia_training_sentences_2 = read_train_genia(GEN_DATA_PATH)
+    training_sentences = read_penn_treebank(DATA_PATH, "0200", "2199")
+    training_sentences_2 = read_penn_treebank(DATA_PATH, "0200", "2199")
+    # genia_training_sentences = read_train_genia(GEN_DATA_PATH)
+    # genia_training_sentences_2 = read_train_genia(GEN_DATA_PATH)
 
     # Read validate sentences from penn treebank for the given sections without labels
     validation_sentences = read_test_penn_treebank(ST_DATA_PATH, "2300", "2399")
-    genia_validation_sentences = read_test_genia(GEN_DATA_PATH)
+    # genia_validation_sentences = read_test_genia(GEN_DATA_PATH)
 
     # training_vocabulary, training_tags = extract_vocabulary_tags(training_sentences)
     # logging.info("validation sentences: "+ str(len(validation_sentences)) + "Training Vocabulary: " + str(len(training_vocabulary)) + " Training Tags: " + str(len(training_tags)))
@@ -273,12 +273,13 @@ def main():
     my_parser = dependency_parser.SVMParser(load=False)
     # # train the data
     # logging.info("train")
-    my_parser.train( genia_training_sentences, genia_training_sentences_2 )
+    my_parser.train( training_sentences, training_sentences_2, dummy=False )
+    # my_parser.train( genia_training_sentences, genia_training_sentences_2 )
     # my_parser.tag( validation_sentences )
     # print "infer"
     # print len(validation_sentences)
-    inferred_trees = my_parser.test ( genia_validation_sentences )
-    my_parser.evaluate( inferred_trees, genia_validation_sentences )
+    inferred_trees = my_parser.test ( validation_sentences )
+    my_parser.evaluate( inferred_trees, validation_sentences )
 
 if __name__ == '__main__':
     main()

@@ -15,6 +15,7 @@ SHIFT = 1
 RIGHT = 2
 LEFT_CONTEXT = 2
 RIGHT_CONTEXT = 4
+FINAL_MODEL = "svm_last_action"
 
 def counter_ratio(n,d):
     r = dict()
@@ -72,6 +73,7 @@ class SVMParser(Parser):
         self.ch_r_tag = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
         self.ch_l_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
         self.ch_r_vocab = {0:Counter(), 1:Counter(), 2:Counter(), 3:Counter(), 4:Counter(), 5:Counter(), 6:Counter(), 7:Counter()}
+        self.last_action = {}
 
         self.loaded = False
         self.actions = Counter()
@@ -81,7 +83,7 @@ class SVMParser(Parser):
         self.N_FEATURES = None #(LEFT_CONTEXT + RIGHT_CONTEXT) * self.context_feature_size + 2 * self.target_feature_size
         if load == True:
             self.loaded = True
-            self.clf = pickle.load( open( "svm_focus.p", "rb" ) )
+            self.clf = pickle.load( open( FINAL_MODEL+".p", "rb" ) )
             self.N_FEATURES = 4242238
         
 
@@ -174,6 +176,9 @@ class SVMParser(Parser):
             lex_indices += [self.child_feature( position,child,offset,family )]
         return lex_indices
 
+    def action_feature(self, last_action, offset):
+        return last_action+offset
+
     # def child_pos( self, children, offset ):
     #     pos_indices = []
     #     for child in children:
@@ -210,7 +215,7 @@ class SVMParser(Parser):
     #         features += [temp_features]
     #     return features
 
-    def extract_test_features(self, trees, i, l, r):
+    def extract_test_features(self, trees, i, l, r, last_action, total_offset):
         features = []
         offset = 0
         # features_tag = {0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[]}
@@ -231,6 +236,8 @@ class SVMParser(Parser):
                 offset += len(self.ch_r_tag[k])
 
                 features += (temp_lex + temp_tag + temp_ch_r_tag + temp_ch_r_lex + temp_ch_l_tag + temp_ch_l_lex )
+
+        features += [self.action_feature(last_action, total_offset)]
         return features
 
 
@@ -260,7 +267,7 @@ class SVMParser(Parser):
         target_node = trees[i]
         return target_node.pos_tag
 
-    def train(self, sentences, sentences2):
+    def train(self, sentences, sentences2, dummy=False):
         m = len(sentences)
         print "Train Sentences: " + str(m) + "," + str(len(sentences2))
         train_x = {}
@@ -301,7 +308,7 @@ class SVMParser(Parser):
         self.ch_l_vocab = convert_to_features(self.ch_l_vocab)
         self.ch_r_vocab = convert_to_features(self.ch_r_vocab)
 
-        self.N_FEATURES = count_features(self.position_tag) + count_features(self.position_vocab) + count_features(self.ch_l_tag) + count_features(self.ch_l_vocab) + count_features(self.ch_r_tag) + count_features(self.ch_r_vocab)
+        self.N_FEATURES = 3 + count_features(self.position_tag) + count_features(self.position_vocab) + count_features(self.ch_l_tag) + count_features(self.ch_l_vocab) + count_features(self.ch_r_tag) + count_features(self.ch_r_vocab)
         print self.N_FEATURES
 
         # convert dummy to real
@@ -315,6 +322,7 @@ class SVMParser(Parser):
             # print "here"
             # print len(trees)
             i = 0
+            y = SHIFT
             no_construction = False
             while ( len(trees) > 0 ):
                 if i == len(trees) - 1:
@@ -325,12 +333,14 @@ class SVMParser(Parser):
                     i = 0
                 else:
                     tree_pos_tag = self.get_pos(trees, i)
-                    
+
                     # extract features
-                    extracted_features = self.extract_test_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT)
+                    extracted_features = self.extract_test_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT, y, self.N_FEATURES - 3)
 
                     # estimate the action to be taken for i, i+ 1 target  nodes
                     y = self.estimate_train_action(trees, i)
+                    
+
                     self.actions[y] += 1
 
                     if tree_pos_tag in train_x:
@@ -349,7 +359,10 @@ class SVMParser(Parser):
 
 
         print self.actions
-        for lp in train_x:
+        train_tags = train_x.keys()
+        if(dummy):
+            train_tags = ['PRP$','VBG']
+        for lp in train_tags:
             print lp
             print len(train_x[lp])
             print self.N_FEATURES
@@ -379,14 +392,14 @@ class SVMParser(Parser):
                     clf[lp] = svm.SVC(kernel='poly', degree=2, gamma=1, coef0=1, cache_size=5120)
                     # clf[lp] = svm.LinearSVC()
                     clf[lp].fit(features[lp], train_y[lp])
-                    print(clf[lp].best_params_)
+                    # print(clf[lp].best_params_)
                     print "pickle: "+ clf_file
                     pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
 
 
         self.clf = clf
         print "pickling"
-        pickle.dump( clf , open( "full_svm.p", "wb" ) )
+        pickle.dump( clf , open( FINAL_MODEL+".p", "wb" ) )
         print "pickling done"
 
     def test(self, sentences):
@@ -394,6 +407,7 @@ class SVMParser(Parser):
         test_sentences = []
         inferred_trees = []
         total = 0
+        y = SHIFT
         for s in sentences:
             test_sentences += [sentence.Sentence( s.words, s.pos_tags )]
 
@@ -410,7 +424,7 @@ class SVMParser(Parser):
                     i = 0
                 else:                   
                     # extract features
-                    extracted_features = self.extract_test_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT)
+                    extracted_features = self.extract_test_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT, y, self.N_FEATURES - 3)
 
                     # estimate the action to be taken for i, i+ 1 target  nodes
                     y = self.estimate_action(trees, i, extracted_features)
@@ -424,6 +438,62 @@ class SVMParser(Parser):
                 # print total
             inferred_trees += [trees]
             # print len(inferred_trees)
+
+        print self.test_actions
+        print total
+        return inferred_trees
+
+
+    def dummy_test(self, sentences):
+        print len(sentences)
+        test_sentences = []
+        true_sentences = []
+        inferred_trees = []
+        accuracy_n = {'PRP$':0, 'VBG':0}
+        accuracy_d = {'PRP$':0, 'VBG':0}
+        total = 0
+        y = SHIFT
+        for s in sentences:
+            true_sentences += [sentence.ParsedSentence( s.words, s.pos_tags, s.dependency )]
+
+        for s in true_sentences:
+            trees = s.get_trees()
+            i = 0
+            no_construction = False
+            while ( len(trees) > 0 ):
+                if i == (len(trees) - 1):
+                    if no_construction == True:
+                        break;
+                    # if we reach the end start from the beginning
+                    no_construction = True
+                    i = 0
+                else:                   
+                    # extract features
+                    extracted_features = self.extract_test_features(trees, i, LEFT_CONTEXT, RIGHT_CONTEXT, y, self.N_FEATURES - 3)
+
+                    # estimate the action to be taken for i, i+ 1 target  nodes
+                    y = self.estimate_train_action(trees, i)
+                    tree_pos_tag = self.get_pos( trees, i )
+                    if tree_pos_tag in ['PRP$','VBG']:
+                        accuracy_d[tree_pos_tag] += 1
+                        y_prime = self.estimate_action(trees, i, extracted_features)
+                        if y == y_prime:
+                            accuracy_n[tree_pos_tag] += 1
+
+
+                    i, trees = self.take_action(trees, i ,y)
+                    # execute the action and modify the trees
+                    if y!= SHIFT:
+                        no_construction = False
+                    self.test_actions[y] += 1
+            if(len(trees) == 1):
+                total+=1
+                # print total
+            inferred_trees += [trees]
+            # print len(inferred_trees)
+
+        print counter_ratio(accuracy_n,accuracy_d)
+        print accuracy_n, accuracy_d
 
         print self.test_actions
         print total
