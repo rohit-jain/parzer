@@ -40,4 +40,4 @@ def tag_genia( path, path2, tagger_path ):
     print "done"
 
 
-tag_genia(DIR_PATH+"train",DIR_PATH+"tagged_train","/Users/rohitjain/Downloads/geniatagger/")
+tag_genia(DIR_PATH+"dev",DIR_PATH+"tagged_dev","/Users/rohitjain/Downloads/geniatagger/")

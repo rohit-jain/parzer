@@ -7,7 +7,7 @@ def readfile(filepath):
     tokens = []
     trees = []
     n = 0
-    OUTPUT_FILE = open(FILE_PATH + "test", "w")
+    OUTPUT_FILE = open(FILE_PATH + "dev", "w")
 
     with open(filepath, 'r') as f: 
         for line in f:
@@ -20,4 +20,4 @@ def readfile(filepath):
     OUTPUT_FILE.close()
     print "converted"
 
-readfile(FILE_PATH + "test.trees")
+readfile(FILE_PATH + "dev.trees")
