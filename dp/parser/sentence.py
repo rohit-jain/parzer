@@ -22,7 +22,7 @@ class Sentence(object):
 
 
 class ParsedSentence(Sentence):
-    """labeled sentence with the parsed positions"""
+    """labeled sentence(dependency known) with the parsed positions"""
 
     def __init__(self, words, pos_tags, dependency):
         Sentence.__init__(self, words, pos_tags)
