@@ -21,11 +21,6 @@ class Node(object):
         self.left = self.left + [child]
 
     def match_all(self, gold_sentence):
-        """
-        returns true if the tree is completely
-        correct parse(ignoring punctuation tags)
-        of the gold sentence
-        """
         correct_roots = self.match(gold_sentence)
         if( correct_roots == len(gold_sentence.words)):
             return True
@@ -33,12 +28,7 @@ class Node(object):
             return False
 
     def match(self, gold_sentence):
-        """
-        returns the number of correctly parsed
-        nodes(ignoring punctuation tags)
-        for gold_sentence
-        """
-        PUNCTUATION_TAGS = [',','.',':','\'\'','``','PUNCT','SYM']
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
         correct_roots = 0
         position = self.position
         dep = self.dependency
@@ -57,11 +47,7 @@ class Node(object):
         return correct_roots
 
     def match_dep(self, gold_sentence, result_dict, baseline_dict):
-        """
-        return number of nodes that have correct head nodes
-        NOTE: ignoring PUNCTUATION_TAGS
-        """
-        PUNCTUATION_TAGS = [',','.',':','\'\'','``','PUNCT','SYM']
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
         correct_roots = 0
         position = self.position
         dep = self.dependency

@@ -1,0 +1,2 @@
+export CLASSPATH=/Users/rohitjain/Downloads/stanford-postagger-full-2015-04-20
+export STANFORD_MODELS=/Users/rohitjain/Downloads/stanford-postagger-full-2015-04-20/models
