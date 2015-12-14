@@ -38,7 +38,7 @@ class Node(object):
         nodes(ignoring punctuation tags)
         for gold_sentence
         """
-        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``','PUNCT','SYM']
         correct_roots = 0
         position = self.position
         dep = self.dependency
@@ -61,7 +61,7 @@ class Node(object):
         return number of nodes that have correct head nodes
         NOTE: ignoring PUNCTUATION_TAGS
         """
-        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``','PUNCT','SYM']
         correct_roots = 0
         position = self.position
         dep = self.dependency

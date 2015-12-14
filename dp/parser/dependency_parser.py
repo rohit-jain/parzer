@@ -8,14 +8,17 @@ from sets import Set
 from collections import Counter
 import os
 from sklearn.grid_search import GridSearchCV
+import getopt
 import copy
 
 LEFT = 0
 SHIFT = 1
 RIGHT = 2
+# length of the left context window
 LEFT_CONTEXT = 2
+# length of the right context window
 RIGHT_CONTEXT = 4
-FINAL_MODEL = "svm_last_action"
+FINAL_MODEL = "svm"
 EXTRACT_LEX = 0
 EXTRACT_POS = 1
 
@@ -69,7 +72,7 @@ class SVMParser(Parser):
     """
     Dependency parser based on yamada et al ( 2003 )
     """
-    def __init__(self, load=False, cache_size=5120):
+    def __init__(self, model, load=False, cache_size=5120):
         Parser.__init__(self)
         self.st = {}#StanfordPOSTagger("wsj-0-18-bidirectional-distsim.tagger")
         self.clf = {}
@@ -84,10 +87,12 @@ class SVMParser(Parser):
         self.loaded = False
         self.actions = Counter()
         self.test_actions = Counter()
+        self.tag_actions = {}
         self.N_FEATURES = None
+        self.model_path = model
         if load == True:
             self.loaded = True
-            self.clf = pickle.load( open( FINAL_MODEL+".p", "rb" ) )
+            self.clf = pickle.load( open( self.model_path + FINAL_MODEL+".p", "rb" ) )
         
 
     def complete_subtree(self, trees, child):
@@ -125,13 +130,8 @@ class SVMParser(Parser):
             try:
                 action_array = self.clf[tree_pos_tag].predict( temp_features )
             except Exception as e:
-                print tree_pos_tag
-                print e
-                print "guess"
-                action_array = [SHIFT, LEFT, RIGHT]
-                return action_array[0]
+                return self.tag_actions[tree_pos_tag].most_common(1)[0][0]
         else:
-            print "guess"
             action_array = [SHIFT, LEFT, RIGHT]
         return action_array[0]
 
@@ -261,7 +261,14 @@ class SVMParser(Parser):
         target_node = trees[i]
         return target_node.pos_tag
 
-    def train(self, sentences, dummy=False):
+    def update_pos_action(self, tree_tag, action):
+        """ keep track of each action for every POS tag """
+        if tree_tag not in self.tag_actions.keys():
+            self.tag_actions[tree_tag] = Counter()
+        self.tag_actions[tree_tag][action] += 1
+        return
+
+    def train(self, sentences):
         """
         Method to train the parser
         """
@@ -304,7 +311,7 @@ class SVMParser(Parser):
 
         # set the total number of features
         self.N_FEATURES = count_features(self.position_tag) + count_features(self.position_vocab) + count_features(self.ch_l_tag) + count_features(self.ch_l_vocab) + count_features(self.ch_r_tag) + count_features(self.ch_r_vocab)
-        
+        print self.N_FEATURES
         # if the model was loaded from disk
         # skip training and return
         if(self.loaded):
@@ -339,6 +346,7 @@ class SVMParser(Parser):
                     y = self.estimate_train_action(trees, i)
                     
                     self.actions[y] += 1
+                    self.update_pos_action(tree_pos_tag, y)
 
                     if tree_pos_tag in train_x:
                         train_x[tree_pos_tag].append( extracted_features )
@@ -358,8 +366,8 @@ class SVMParser(Parser):
 
         # mainly for testing
         # if dummy is true we look at only 2 tags
-        if(dummy):
-            train_tags = ['PRP$','VBG']
+        # if(dummy):
+        #     train_tags = ['PRP$','VBG']
 
         # train classifier for each train tag
         for lp in train_tags:
@@ -376,7 +384,7 @@ class SVMParser(Parser):
             # else the classifier would fail
             if( len(n_classes) > 1 ):
 
-                clf_file = lp+".p"
+                clf_file = self.model_path + lp+".p"
                 # load if the classifier already exists on disk
                 # else train
                 if os.path.isfile(clf_file):
@@ -405,13 +413,13 @@ class SVMParser(Parser):
                     # print(clf[lp].best_params_)
                     
                     print "pickle: "+ clf_file
-                    pickle.dump( clf[lp] , open( lp+".p", "wb" ) )
+                    pickle.dump(  clf[lp] , open( clf_file, "wb" ) )
 
 
         # write the full model to disk
         self.clf = clf
         print "pickling"
-        pickle.dump( clf , open( FINAL_MODEL+".p", "wb" ) )
+        pickle.dump( clf , open( self.model_path + FINAL_MODEL+".p", "wb" ) )
         print "pickling done"
 
     def test(self, sentences):
@@ -456,6 +464,10 @@ class SVMParser(Parser):
 
 
     def dummy_test(self, sentences):
+        """
+        to test with limited set of tags
+        not used in the main workflow
+        """
         print len(sentences)
         test_sentences = []
         true_sentences = []
@@ -525,14 +537,12 @@ class SVMParser(Parser):
         is completely correct
 
         """
-        PUNCTUATION_TAGS = [',','.',':','\'\'','``']
+        PUNCTUATION_TAGS = [',','.',':','\'\'','``','PUNCT','SYM']
         root_accuracy_n = Counter()
-        root_accuracy_d = Counter()
-        root_accuracy = dict()
+        # root_accuracy_d = Counter()
 
         dep_accuracy_n = Counter()
         dep_accuracy_d = Counter()
-        dep_accuracy = dict()
 
         complete_d = 0
         complete_n = 0
@@ -541,34 +551,39 @@ class SVMParser(Parser):
         for i,it in enumerate(inferred_trees):
             s = gold_sentences[i]
 
+            # if there is only one tree
             if(len(it) == 1):
                 complete_d += 1
+                # get the current root
                 current_root = it[0]
-                root_accuracy_d[current_root.lex] += 1
+                # increment root accuracy denominator
+                # root_accuracy_d[current_root.lex] += 1
 
+                # check if the entire tree matches
                 if it[0].match_all(s):
+                    # update number of complete correct parsed trees
                     complete_n += 1
 
+                # if current root is not a punctuation
                 if current_root.pos_tag not in PUNCTUATION_TAGS:
+                    # check if it is the tree root is same as the gold sentence root
                     if( s.dependency[current_root.position] == -1 ):
                         root_accuracy_n[current_root.lex] += 1
-           
+
+            # multiple trees
             else:
                 for t in it:
                     current_root = t
-                    root_accuracy_d[current_root.lex] += 1
+                    # root_accuracy_d[current_root.lex] += 1
                     if current_root.pos_tag not in PUNCTUATION_TAGS:
                         if( s.dependency[current_root.position] == -1 ):
                             root_accuracy_n[current_root.lex] += 1
 
-
+            # count how many nodes have correct parents ignoring punctuation
             for t in it:
                 t.match_dep(s,dep_accuracy_n,dep_accuracy_d)
 
 
-        # 3rd w else, 1st without else
-        root_accuracy = counter_ratio(root_accuracy_n,root_accuracy_d)
-        print "root accuracy: " + str(np.sum(root_accuracy_n.values())/np.sum(root_accuracy_d.values())) + "," + str(np.mean(root_accuracy.values())) + "," + str(np.sum(root_accuracy_n.values())/total_sentences)
-        dep_accuracy = counter_ratio(dep_accuracy_n,dep_accuracy_d)
-        print "dep accuracy: " + str(np.sum(dep_accuracy_n.values())/np.sum(dep_accuracy_d.values())) + "," + str(np.mean(dep_accuracy.values()))
+        print "root accuracy: " + str(np.sum(root_accuracy_n.values())/total_sentences)
+        print "dep accuracy: " + str(np.sum(dep_accuracy_n.values())/np.sum(dep_accuracy_d.values()))
         print "complete: " + str(complete_n/complete_d)
