@@ -1,3 +1,5 @@
+In this project, I studied and re-implemented the technique for dependency parsing proposed by Yamada, Hiroyasu, and Yuji Matsumoto in "Statistical dependency analysis with support vector machines.". In addition to recreating the results we also experimented with the biomedical data from the GENIA biomedical corpus(Yuka et al., 2005) and the Spanish universal dependency dataset(McDonald et al.,2013) to understand out of domain implications.
+
 Report: http://bit.ly/nlp-cs6741
 Report+Presentation+Data+Models: http://bit.ly/nlp-cs6741-full
 
