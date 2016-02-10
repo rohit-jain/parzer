@@ -1,13 +1,13 @@
-# Statistical Dependency Parsing using SVM
+## Statistical Dependency Parsing using SVM
 
-## Abstract
+### Abstract
 
 In this project, I studied and re-implemented the technique for dependency parsing proposed by Yamada, Hiroyasu, and Yuji Matsumoto in "Statistical dependency analysis with support vector machines.". In addition to recreating the results we also experimented with the biomedical data from the GENIA biomedical corpus(Yuka et al., 2005) and the Spanish universal dependency dataset(McDonald et al.,2013) to understand out of domain implications.
 
 #### Report, Presentation and data
-PDF: <http://bit.ly/nlp-cs6741>
-
-Presentation+Data+Models: <http://bit.ly/nlp-cs6741-full>
+PDF: <http://bit.ly/nlp-cs6741><br>
+Presentation+Data+Models: <http://bit.ly/nlp-cs6741-full><br>
+For any questions email at: rohitjain [dot] nsit [at] gmail [dot] com
 
 #### Instructions to run the code:
 
@@ -27,11 +27,11 @@ Presentation+Data+Models: <http://bit.ly/nlp-cs6741-full>
 
 The following packages need to be installed:
     Python numpy, scipy, scikit-learn.
-    If you are running an ubuntu machine on aws, run the following commands.
-    sudo apt-get update
-    sudo apt-get install -y python-numpy python-scipy python-matplotlib ipython ipython-notebook python-pandas python-sympy python-nose
-    sudo apt-get install -y python-pip
-    sudo pip install -U scikit-learn
+    If you are running an ubuntu machine on aws, run the following commands.<br><br>
+    `sudo apt-get update`<br><br>
+    `sudo apt-get install -y python-numpy python-scipy python-matplotlib ipython ipython-notebook python-pandas python-sympy python-nose`<br><br>
+    `sudo apt-get install -y python-pip`<br><br>
+    `sudo pip install -U scikit-learn`
 
    These packages are sufficient to run the parser with the pre-processed data in the data folder. If you wish to pre-process your own datastanford pos tagger and genia tagger need to be installed.
     Please refer to section 2
@@ -72,7 +72,9 @@ The variables on lines 170-184 are commented and can be changed as per the need.
 
 ##### Section 2: Pre-processing
    All the pre-processing scripts are inside the converter folder. The pre-processing is different for each dataset and the goal is to get the training and testing files in the following format:
-    Train file format:
+
+######Train file format:
+    
     <Token> <Gold POS Tag> <Head node's position/dependency index>
     Eg. 
     It  PRP 1
@@ -86,7 +88,7 @@ The variables on lines 170-184 are commented and can be changed as per the need.
     call    NN  4
     .   .   1
 
-    Test file format:
+######Test file format:
     <Token> <Assigned Tag>  <Gold POS Tag> <Head node's position/dependency index>
     Eg.
     You PRP PRP 1
